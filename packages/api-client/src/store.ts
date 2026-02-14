@@ -24,6 +24,49 @@ import type {
 } from './protocol';
 
 // ---------------------------------------------------------------------------
+// Session name cleaning
+// ---------------------------------------------------------------------------
+
+/**
+ * Clean session names for display.
+ * Extracts meaningful names from gateway session identifiers.
+ */
+export function cleanSessionName(session: SessionSummary): string {
+  const { sessionKey, title } = session;
+
+  // Use title if available, otherwise clean the session key
+  const displayName = title || sessionKey;
+
+  // Clean discord sessions
+  if (displayName.includes('discord:')) {
+    // Extract channel name after #
+    const channelMatch = displayName.match(/#([^#]+)$/);
+    if (channelMatch) {
+      return `#${channelMatch[1]}`;
+    }
+
+    // Handle special cases like "discord:g-agent-main-main"
+    if (displayName.includes('g-agent-main-main')) {
+      return 'Main';
+    }
+  }
+
+  // Clean cron jobs
+  if (displayName.startsWith('Cron: ')) {
+    return displayName.substring(6);
+  }
+
+  // Add robot emoji for subagents
+  if (sessionKey.includes('subagent')) {
+    const cleaned = title || sessionKey;
+    return `🤖 ${cleaned}`;
+  }
+
+  // Fallback to raw display name or session key
+  return displayName;
+}
+
+// ---------------------------------------------------------------------------
 // State shape
 // ---------------------------------------------------------------------------
 
@@ -46,6 +89,8 @@ export interface GatewayState {
   isStreaming: boolean;
   /** Activity feed items (tool calls, status changes, etc.). */
   activityItems: ActivityItem[];
+  /** Whether the chat panel should be visible. */
+  showChat: boolean;
 }
 
 export interface GatewayActions {
@@ -62,6 +107,10 @@ export interface GatewayActions {
   refreshSessions: () => Promise<void>;
   /** Load chat history for a given session. */
   loadHistory: (sessionKey: string) => Promise<void>;
+  /** Show the chat panel. */
+  openChat: () => void;
+  /** Hide the chat panel. */
+  closeChat: () => void;
 }
 
 export type GatewayStore = GatewayState & GatewayActions;
@@ -87,6 +136,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   messages: [],
   isStreaming: false,
   activityItems: [],
+  showChat: false,
 
   // Actions
   connect: async (config) => {
@@ -118,6 +168,13 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
         error: null,
         activeSessionKey: mainSessionKey,
       });
+
+      // Auto-refresh sessions after successful connection
+      get()
+        .refreshSessions()
+        .catch(() => {
+          // Sessions refresh is best-effort
+        });
 
       // Auto-load chat history for the main session
       if (mainSessionKey) {
@@ -170,7 +227,12 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   },
 
   selectSession: (sessionKey) => {
-    set({ activeSessionKey: sessionKey, messages: [], activityItems: [] });
+    set({ activeSessionKey: sessionKey, messages: [], activityItems: [], showChat: true });
+    get()
+      .loadHistory(sessionKey)
+      .catch(() => {
+        // History load is best-effort
+      });
   },
 
   refreshSessions: async () => {
@@ -203,6 +265,14 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     // Filter out system noise
     const filtered = normalised.filter(shouldDisplayMessage);
     set({ messages: filtered });
+  },
+
+  openChat: () => {
+    set({ showChat: true });
+  },
+
+  closeChat: () => {
+    set({ showChat: false });
   },
 }));
 
