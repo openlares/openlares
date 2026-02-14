@@ -1,0 +1,24 @@
+{
+  "name": "openlares",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "eslint": "^9.39.2",
+    "prettier": "^3.5.0",
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.55.0"
+  },
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=22"
+  }
+}
