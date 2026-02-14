@@ -6,6 +6,13 @@ import { useGatewayStore } from '@openlares/api-client';
 
 export default function Home() {
   const connectionStatus = useGatewayStore((s) => s.connectionStatus);
+  const sessions = useGatewayStore((s) => s.sessions);
+  const activeSessionKey = useGatewayStore((s) => s.activeSessionKey);
+  const selectSession = useGatewayStore((s) => s.selectSession);
+
+  const handleSessionClick = (sessionKey: string) => {
+    selectSession(sessionKey);
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -21,7 +28,13 @@ export default function Home() {
         </div>
       )}
 
-      {connectionStatus !== 'disconnected' && <PixiCanvas />}
+      {connectionStatus !== 'disconnected' && (
+        <PixiCanvas
+          sessions={sessions}
+          activeSessionKey={activeSessionKey}
+          onSessionClick={handleSessionClick}
+        />
+      )}
     </div>
   );
 }

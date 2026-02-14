@@ -1,1 +1,8 @@
 @import 'tailwindcss';
+
+/* Lock viewport — prevent body from growing beyond screen */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}

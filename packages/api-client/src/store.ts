@@ -24,6 +24,49 @@ import type {
 } from './protocol';
 
 // ---------------------------------------------------------------------------
+// Session name cleaning
+// ---------------------------------------------------------------------------
+
+/**
+ * Clean session names for display.
+ * Extracts meaningful names from gateway session identifiers.
+ */
+export function cleanSessionName(session: SessionSummary): string {
+  const { sessionKey, title } = session;
+
+  // Use title if available, otherwise clean the session key
+  const displayName = title || sessionKey;
+
+  // Clean discord sessions
+  if (displayName.includes('discord:')) {
+    // Extract channel name after #
+    const channelMatch = displayName.match(/#([^#]+)$/);
+    if (channelMatch) {
+      return `#${channelMatch[1]}`;
+    }
+
+    // Handle special cases like "discord:g-agent-main-main"
+    if (displayName.includes('g-agent-main-main')) {
+      return 'Main';
+    }
+  }
+
+  // Clean cron jobs
+  if (displayName.startsWith('Cron: ')) {
+    return displayName.substring(6);
+  }
+
+  // Add robot emoji for subagents
+  if (sessionKey.includes('subagent')) {
+    const cleaned = title || sessionKey;
+    return `🤖 ${cleaned}`;
+  }
+
+  // Fallback to raw display name or session key
+  return displayName;
+}
+
+// ---------------------------------------------------------------------------
 // State shape
 // ---------------------------------------------------------------------------
 
@@ -46,6 +89,8 @@ export interface GatewayState {
   isStreaming: boolean;
   /** Activity feed items (tool calls, status changes, etc.). */
   activityItems: ActivityItem[];
+  /** Whether the chat panel should be visible. */
+  showChat: boolean;
 }
 
 export interface GatewayActions {
@@ -62,6 +107,10 @@ export interface GatewayActions {
   refreshSessions: () => Promise<void>;
   /** Load chat history for a given session. */
   loadHistory: (sessionKey: string) => Promise<void>;
+  /** Show the chat panel. */
+  openChat: () => void;
+  /** Hide the chat panel. */
+  closeChat: () => void;
 }
 
 export type GatewayStore = GatewayState & GatewayActions;
@@ -87,6 +136,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   messages: [],
   isStreaming: false,
   activityItems: [],
+  showChat: false,
 
   // Actions
   connect: async (config) => {
@@ -118,6 +168,13 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
         error: null,
         activeSessionKey: mainSessionKey,
       });
+
+      // Auto-refresh sessions after successful connection
+      get()
+        .refreshSessions()
+        .catch(() => {
+          // Sessions refresh is best-effort
+        });
 
       // Auto-load chat history for the main session
       if (mainSessionKey) {
@@ -170,7 +227,12 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   },
 
   selectSession: (sessionKey) => {
-    set({ activeSessionKey: sessionKey, messages: [], activityItems: [] });
+    set({ activeSessionKey: sessionKey, messages: [], activityItems: [], showChat: true });
+    get()
+      .loadHistory(sessionKey)
+      .catch(() => {
+        // History load is best-effort
+      });
   },
 
   refreshSessions: async () => {
@@ -180,9 +242,21 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     const result = (await client.request('sessions.list', {
       includeDerivedTitles: true,
       includeLastMessage: true,
-    })) as { sessions: SessionSummary[] };
+      activeMinutes: 1440, // Last 24 hours
+      limit: 20,
+    })) as { sessions: Record<string, unknown>[] };
 
-    set({ sessions: result.sessions });
+    // Gateway returns `key` but our type uses `sessionKey` — normalise
+    const sessions: SessionSummary[] = result.sessions.map((s) => ({
+      sessionKey: (s.sessionKey ?? s.key ?? '') as string,
+      title: (s.title ?? s.displayName ?? '') as string,
+      lastMessage: (s.lastMessage ?? '') as string,
+      active: Boolean(s.active),
+      createdAt: (s.createdAt ?? 0) as number,
+      updatedAt: (s.updatedAt ?? 0) as number,
+    }));
+
+    set({ sessions });
   },
 
   loadHistory: async (sessionKey) => {
@@ -194,7 +268,23 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
       limit: 50,
     })) as ChatHistoryResult;
 
-    set({ messages: result.messages });
+    // Normalise content — gateway may return array-of-blocks format
+    const normalised = result.messages.map((m) => ({
+      ...m,
+      content: normaliseContent(m.content),
+    }));
+
+    // Filter out system noise
+    const filtered = normalised.filter(shouldDisplayMessage);
+    set({ messages: filtered });
+  },
+
+  openChat: () => {
+    set({ showChat: true });
+  },
+
+  closeChat: () => {
+    set({ showChat: false });
   },
 }));
 
@@ -205,6 +295,68 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 type StoreSetter = (
   partial: Partial<GatewayState> | ((state: GatewayStore) => Partial<GatewayState>),
 ) => void;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Filter out system noise from chat messages.
+ *
+ * Removes heartbeat prompts, system events, tool call metadata, and other
+ * OpenClaw-internal messages that shouldn't be displayed in the chat UI.
+ *
+ * @param message The message to check
+ * @returns true if the message should be kept, false if it should be filtered out
+ */
+export function shouldDisplayMessage(message: ChatMessage): boolean {
+  const content = normaliseContent(message.content);
+
+  // Skip system messages
+  if (message.role === 'system') {
+    return false;
+  }
+
+  // Skip heartbeat-related user messages
+  if (message.role === 'user') {
+    if (content.includes('Read HEARTBEAT.md') || content.includes('HEARTBEAT_OK')) {
+      return false;
+    }
+    // Skip metadata envelope messages
+    if (content.startsWith('Conversation info (untrusted metadata)')) {
+      return false;
+    }
+  }
+
+  // Skip assistant heartbeat/no-reply responses
+  if (message.role === 'assistant') {
+    const trimmed = content.trim();
+    if (trimmed === 'HEARTBEAT_OK' || trimmed === 'NO_REPLY') {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Normalise message content from the gateway.
+ *
+ * OpenClaw may return `content` as a string **or** as an array of
+ * `{ type: "text", text: "..." }` blocks (OpenAI/Anthropic format).
+ * We flatten it to a plain string so the rest of the app doesn't
+ * need to care.
+ */
+function normaliseContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((b: Record<string, unknown>) => b.type === 'text')
+      .map((b: Record<string, unknown>) => b.text)
+      .join('');
+  }
+  return String(content ?? '');
+}
 
 function wireEvents(client: GatewayClient, set: StoreSetter): void {
   // Chat streaming events
@@ -223,11 +375,13 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
             content: last.content + payload.message,
           };
         } else {
-          msgs.push({
+          const newMessage: ChatMessage = {
             role: 'assistant',
             content: payload.message!,
             timestamp: Date.now(),
-          });
+          };
+          // Only add if it would pass the filter (but allow partial content during streaming)
+          msgs.push(newMessage);
         }
         return { messages: msgs, isStreaming: true };
       });
@@ -240,14 +394,25 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
         const lastIdx = msgs.length - 1;
         const last = msgs[lastIdx];
 
+        const finalMessage: ChatMessage = {
+          role: 'assistant',
+          content: payload.message!,
+          timestamp: Date.now(),
+        };
+
+        // Check if final message should be displayed
+        if (!shouldDisplayMessage(finalMessage)) {
+          // Remove the streaming message if the final version shouldn't be displayed
+          if (last && last.role === 'assistant') {
+            msgs.pop();
+          }
+          return { messages: msgs, isStreaming: false };
+        }
+
         if (last && last.role === 'assistant') {
-          msgs[lastIdx] = { ...last, content: payload.message! };
+          msgs[lastIdx] = finalMessage;
         } else {
-          msgs.push({
-            role: 'assistant',
-            content: payload.message!,
-            timestamp: Date.now(),
-          });
+          msgs.push(finalMessage);
         }
         return { messages: msgs, isStreaming: false };
       });
