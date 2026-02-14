@@ -6,7 +6,8 @@
  *   bus.on('ping', (data) => console.log(data.ts));
  *   bus.emit('ping', { ts: Date.now() });
  */
-export class EventBus<TEvents extends Record<string, unknown>> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class EventBus<TEvents extends Record<string, any>> {
   private listeners = new Map<keyof TEvents, Set<(data: never) => void>>();
 
   on<K extends keyof TEvents>(event: K, handler: (data: TEvents[K]) => void): () => void {

@@ -5,7 +5,4 @@
  * and visual effects. Communicates with the UI layer via EventBus.
  */
 
-// TODO: PixiJS Application wrapper
-// TODO: Avatar renderer
-// TODO: Animation system
-// TODO: Workspace scene (background, grid, etc.)
+export { PixiCanvas } from './components/PixiCanvas.js';
