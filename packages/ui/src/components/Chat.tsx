@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, type KeyboardEvent } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '@openlares/core';
 
 // ---------------------------------------------------------------------------
@@ -114,12 +116,69 @@ function MessageItem({ message }: { message: ChatMessage }) {
       <span className={`text-xs font-medium ${isUser ? 'text-gray-400' : 'text-amber-400'}`}>
         {isUser ? 'You' : 'Agent'}
       </span>
-      <p
-        className="mt-1 break-words text-sm leading-relaxed text-gray-200"
-        style={{ overflowWrap: 'anywhere' }}
-      >
-        {displayContent}
-      </p>
+      {isUser ? (
+        // User messages: plain text with cleaned content
+        <p
+          className="mt-1 break-words text-sm leading-relaxed text-gray-200"
+          style={{ overflowWrap: 'anywhere' }}
+        >
+          {displayContent}
+        </p>
+      ) : (
+        // Agent messages: markdown rendering
+        <div className="mt-1 break-words text-sm leading-relaxed text-gray-200 prose prose-invert prose-sm max-w-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              // Style code blocks with dark background
+              code: ({ children, className }) => {
+                const isInline = !className;
+                return isInline ? (
+                  <code className="bg-gray-700 px-1.5 py-0.5 rounded text-amber-200 text-xs">
+                    {children}
+                  </code>
+                ) : (
+                  <code className="bg-gray-900 text-gray-200">{children}</code>
+                );
+              },
+              pre: ({ children }) => (
+                <pre className="bg-gray-900 p-3 rounded-lg overflow-x-auto border border-gray-700">
+                  {children}
+                </pre>
+              ),
+              // Style links with amber color
+              a: ({ children, href }) => (
+                <a
+                  href={href}
+                  className="text-amber-400 hover:text-amber-300 underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {children}
+                </a>
+              ),
+              // Style tables
+              table: ({ children }) => (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border-collapse border border-gray-600">
+                    {children}
+                  </table>
+                </div>
+              ),
+              th: ({ children }) => (
+                <th className="border border-gray-600 bg-gray-800 px-3 py-2 text-left font-medium">
+                  {children}
+                </th>
+              ),
+              td: ({ children }) => (
+                <td className="border border-gray-600 px-3 py-2">{children}</td>
+              ),
+            }}
+          >
+            {displayContent}
+          </ReactMarkdown>
+        </div>
+      )}
     </div>
   );
 }
