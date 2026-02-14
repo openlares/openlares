@@ -97,6 +97,11 @@ export interface HelloOkPayload {
   snapshot: {
     presence: unknown[];
     health: unknown;
+    sessionDefaults?: {
+      defaultAgentId: string;
+      mainKey: string;
+      mainSessionKey: string;
+    };
   };
   policy: {
     tickIntervalMs: number;

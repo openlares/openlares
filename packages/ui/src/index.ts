@@ -7,3 +7,5 @@
 
 export { ConnectionStatus } from './components/ConnectionStatus';
 export { ActivityFeed } from './components/ActivityFeed';
+export { Chat } from './components/Chat';
+export type { ChatProps } from './components/Chat';
