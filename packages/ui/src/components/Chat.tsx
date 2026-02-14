@@ -45,6 +45,39 @@ function TypingIndicator() {
 }
 
 /**
+ * Strip OpenClaw metadata envelope from user messages.
+ *
+ * When content contains a block like:
+ * ```
+ * Conversation info (untrusted metadata):
+ * ```json
+ * {...}
+ * ```
+ *
+ * Sender (untrusted metadata):
+ * ```json
+ * {...}
+ * ```
+ *
+ * <actual message>
+ * ```
+ *
+ * Extract and return only the `<actual message>` part.
+ */
+function stripMetadataEnvelope(content: string): string {
+  // Pattern to match metadata envelope blocks
+  const metadataPattern =
+    /^(Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*)?(Sender \(untrusted metadata\):\s*```json[\s\S]*?```\s*)?([\s\S]*)$/;
+
+  const match = content.match(metadataPattern);
+  if (match && match[3]) {
+    return match[3].trim();
+  }
+
+  return content;
+}
+
+/**
  * Safely extract displayable text from message content.
  *
  * The gateway may return `content` as a plain string, an array of
@@ -70,6 +103,12 @@ function renderContent(content: unknown): string {
 function MessageItem({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
 
+  // Get the raw content first
+  const rawContent = renderContent(message.content);
+
+  // For user messages, strip metadata envelope
+  const displayContent = isUser ? stripMetadataEnvelope(rawContent) : rawContent;
+
   return (
     <div className={`px-6 py-4 ${isUser ? 'rounded-lg bg-gray-800' : ''}`}>
       <span className={`text-xs font-medium ${isUser ? 'text-gray-400' : 'text-amber-400'}`}>
@@ -79,7 +118,7 @@ function MessageItem({ message }: { message: ChatMessage }) {
         className="mt-1 break-words text-sm leading-relaxed text-gray-200"
         style={{ overflowWrap: 'anywhere' }}
       >
-        {renderContent(message.content)}
+        {displayContent}
       </p>
     </div>
   );
