@@ -1,14 +1,54 @@
 /**
- * OpenClaw Gateway API client.
+ * @openlares/api-client — OpenClaw Gateway API client.
  *
- * Handles WebSocket connection, authentication, and message parsing
- * for the OpenClaw operator protocol.
+ * Provides a WebSocket client, React hook, and Zustand store
+ * for communicating with an OpenClaw Gateway instance.
  */
 
-export type { GatewayConfig } from '@openlares/core';
+// Protocol types
+export type {
+  RequestFrame,
+  ResponseFrame,
+  EventFrame,
+  IncomingFrame,
+  GatewayError,
+  ConnectChallengePayload,
+  ConnectParams,
+  HelloOkPayload,
+  ChatEventState,
+  ChatEventPayload,
+  AgentEventPayload,
+  TickPayload,
+  ShutdownPayload,
+  SystemPresencePayload,
+  ChatSendParams,
+  ChatSendResult,
+  ChatHistoryParams,
+  ChatHistoryMessage,
+  ChatHistoryResult,
+  ChatAbortParams,
+  SessionsListParams,
+  SessionSummary,
+  SessionsListResult,
+  StatusResult,
+} from './protocol';
 
-// TODO: Implement WebSocket client
-// TODO: Implement REST client for /tools/invoke
-// TODO: Connection state management
-// TODO: Auto-reconnect with backoff
-// TODO: Message type definitions for operator protocol
+// Client
+export {
+  GatewayClient,
+  reconnectDelay,
+  generateRequestId,
+  resetRequestCounter,
+} from './gateway-client';
+export type { GatewayClientOptions, EventHandler, StatusChangeHandler } from './gateway-client';
+
+// Re-export core types consumers will need
+export type { ConnectionStatus, GatewayConfig } from '@openlares/core';
+
+// React hook
+export { useGateway } from './use-gateway';
+export type { UseGatewayResult } from './use-gateway';
+
+// Zustand store
+export { gatewayStore, useGatewayStore } from './store';
+export type { GatewayState, GatewayActions, GatewayStore } from './store';
