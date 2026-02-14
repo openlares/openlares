@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EventBus } from '../event-bus.js';
+import { EventBus } from '../event-bus';
 
 /** Test event map */
 interface TestEvents {

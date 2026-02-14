@@ -1,4 +1,4 @@
-import type { ActivityItem, ConnectionStatus } from '../types/index.js';
+import type { ActivityItem, ConnectionStatus } from '../types/index';
 
 /**
  * Map of all application-level events.

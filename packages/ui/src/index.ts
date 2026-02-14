@@ -5,5 +5,5 @@
  * Styled with Tailwind CSS.
  */
 
-export { ConnectionStatus } from './components/ConnectionStatus.js';
-export { ActivityFeed } from './components/ActivityFeed.js';
+export { ConnectionStatus } from './components/ConnectionStatus';
+export { ActivityFeed } from './components/ActivityFeed';

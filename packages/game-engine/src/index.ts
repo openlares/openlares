@@ -5,4 +5,4 @@
  * and visual effects. Communicates with the UI layer via EventBus.
  */
 
-export { PixiCanvas } from './components/PixiCanvas.js';
+export { PixiCanvas } from './components/PixiCanvas';
