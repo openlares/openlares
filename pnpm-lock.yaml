@@ -29,7 +29,16 @@ importers:
       '@openlares/core':
         specifier: workspace:*
         version: link:../core
+      zustand:
+        specifier: ^5.0.0
+        version: 5.0.11(@types/react@19.2.14)(react@19.2.4)
     devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
