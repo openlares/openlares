@@ -12,11 +12,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-gray-950 text-gray-100 antialiased">
+      <body className="h-full bg-gray-950 text-gray-100 antialiased">
         <GatewayProvider>
-          <div className="flex h-screen">
+          <div className="flex h-screen overflow-hidden">
             <Sidebar />
-            <main className="flex-1">{children}</main>
+            <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
             <ChatPanel />
           </div>
         </GatewayProvider>

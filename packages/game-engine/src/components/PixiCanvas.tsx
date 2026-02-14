@@ -98,7 +98,15 @@ export function PixiCanvas() {
 
     return () => {
       destroyed = true;
-      app.destroy(true, { children: true });
+      // Race condition: React strict mode unmounts before init() finishes.
+      // The `destroyed` flag tells setup() to clean up after init resolves.
+      // Wrapping destroy in try/catch handles the case where init partially
+      // completed (stage exists but resize handlers aren't wired yet).
+      try {
+        app.destroy(true, { children: true });
+      } catch {
+        // Ignore — app wasn't fully initialized
+      }
     };
   }, []);
 

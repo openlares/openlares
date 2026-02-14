@@ -10,7 +10,7 @@ export function ChatPanel() {
   const sendMessage = useGatewayStore((s) => s.sendMessage);
 
   return (
-    <aside className="flex w-96 flex-col border-l border-gray-800">
+    <aside className="h-screen w-96 border-l border-gray-800">
       <Chat
         messages={messages}
         isStreaming={isStreaming}

@@ -44,6 +44,29 @@ function TypingIndicator() {
   );
 }
 
+/**
+ * Safely extract displayable text from message content.
+ *
+ * The gateway may return `content` as a plain string, an array of
+ * `{ type: "text", text: "..." }` blocks (OpenAI/Anthropic format),
+ * or even a nested message object. We flatten everything to a string
+ * so rendering never chokes on non-primitive React children.
+ */
+function renderContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((b: Record<string, unknown>) => b.type === 'text')
+      .map((b: Record<string, unknown>) => b.text)
+      .join('');
+  }
+  if (content && typeof content === 'object') {
+    if ('text' in content) return String((content as Record<string, unknown>).text);
+    if ('content' in content) return renderContent((content as Record<string, unknown>).content);
+  }
+  return String(content ?? '');
+}
+
 function MessageItem({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
 
@@ -52,12 +75,22 @@ function MessageItem({ message }: { message: ChatMessage }) {
       <span className={`text-xs font-medium ${isUser ? 'text-gray-400' : 'text-amber-400'}`}>
         {isUser ? 'You' : 'Agent'}
       </span>
-      <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-gray-200">
-        {message.content}
+      <p
+        className="mt-1 break-words text-sm leading-relaxed text-gray-200"
+        style={{ overflowWrap: 'anywhere' }}
+      >
+        {renderContent(message.content)}
       </p>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Layout constants
+// ---------------------------------------------------------------------------
+
+/** Height of the input bar (border + padding + textarea + padding). */
+const INPUT_BAR_HEIGHT = 56;
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -67,8 +100,13 @@ function MessageItem({ message }: { message: ChatMessage }) {
  * Chat — conversational message interface with streaming support.
  *
  * Presentational component that receives messages and callbacks as props.
- * Full-width messages with alternating backgrounds, streaming indicator,
- * and a text input at the bottom.
+ * Full-width messages (ChatGPT-style), streaming indicator, and a text
+ * input pinned at the bottom.
+ *
+ * Layout note: the message area uses an explicit `max-height` with
+ * `calc(100vh - ...)` to guarantee scroll activation. Tailwind flex
+ * utilities alone couldn't enforce a definite height across the nested
+ * flex chain in all browsers / bundler configurations.
  */
 export function Chat({ messages, isStreaming, isConnected, onSendMessage }: ChatProps) {
   const [input, setInput] = useState('');
@@ -112,18 +150,22 @@ export function Chat({ messages, isStreaming, isConnected, onSendMessage }: Chat
   // Not connected state
   if (!isConnected) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-gray-950 text-sm text-gray-500">
+      <div className="flex h-screen flex-col items-center justify-center bg-gray-950 text-sm text-gray-500">
         <p>Connect to start chatting</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-gray-950">
+    <div className="flex h-screen flex-col bg-gray-950">
       {/* Message area */}
-      <div ref={scrollRef} className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-4">
+      <div
+        ref={scrollRef}
+        className="overflow-x-hidden overflow-y-auto px-2 py-4"
+        style={{ maxHeight: `calc(100vh - ${INPUT_BAR_HEIGHT}px)` }}
+      >
         {messages.length === 0 && !isStreaming && (
-          <div className="flex flex-1 items-center justify-center text-sm text-gray-600">
+          <div className="flex h-full items-center justify-center text-sm text-gray-600">
             Send a message to start
           </div>
         )}
@@ -135,8 +177,8 @@ export function Chat({ messages, isStreaming, isConnected, onSendMessage }: Chat
         {isStreaming && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}
       </div>
 
-      {/* Input area */}
-      <div className="border-t border-gray-800 bg-gray-900 p-3">
+      {/* Input bar — pinned to bottom */}
+      <div className="mt-auto shrink-0 border-t border-gray-800 bg-gray-900 p-3">
         <div className="flex gap-2">
           <textarea
             ref={textareaRef}

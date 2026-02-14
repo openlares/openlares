@@ -194,7 +194,12 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
       limit: 50,
     })) as ChatHistoryResult;
 
-    set({ messages: result.messages });
+    // Normalise content — gateway may return array-of-blocks format
+    const normalised = result.messages.map((m) => ({
+      ...m,
+      content: normaliseContent(m.content),
+    }));
+    set({ messages: normalised });
   },
 }));
 
@@ -205,6 +210,29 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 type StoreSetter = (
   partial: Partial<GatewayState> | ((state: GatewayStore) => Partial<GatewayState>),
 ) => void;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalise message content from the gateway.
+ *
+ * OpenClaw may return `content` as a string **or** as an array of
+ * `{ type: "text", text: "..." }` blocks (OpenAI/Anthropic format).
+ * We flatten it to a plain string so the rest of the app doesn't
+ * need to care.
+ */
+function normaliseContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((b: Record<string, unknown>) => b.type === 'text')
+      .map((b: Record<string, unknown>) => b.text)
+      .join('');
+  }
+  return String(content ?? '');
+}
 
 function wireEvents(client: GatewayClient, set: StoreSetter): void {
   // Chat streaming events
