@@ -60,14 +60,14 @@ The app will be available at `http://localhost:3000`.
 
 ### Commands
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start development server |
-| `pnpm build` | Production build |
-| `pnpm lint` | Run ESLint |
-| `pnpm test` | Run tests |
-| `pnpm typecheck` | TypeScript type checking |
-| `pnpm format` | Format code with Prettier |
+| Command          | Description               |
+| ---------------- | ------------------------- |
+| `pnpm dev`       | Start development server  |
+| `pnpm build`     | Production build          |
+| `pnpm lint`      | Run ESLint                |
+| `pnpm test`      | Run tests                 |
+| `pnpm typecheck` | TypeScript type checking  |
+| `pnpm format`    | Format code with Prettier |
 
 ## Contributing
 
