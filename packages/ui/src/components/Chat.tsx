@@ -187,8 +187,7 @@ function MessageItem({ message }: { message: ChatMessage }) {
 // Layout constants
 // ---------------------------------------------------------------------------
 
-/** Height of the input bar (border + padding + textarea + padding). */
-const INPUT_BAR_HEIGHT = 56;
+// No hardcoded heights — layout uses flex to fill available space.
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -248,20 +247,16 @@ export function Chat({ messages, isStreaming, isConnected, onSendMessage }: Chat
   // Not connected state
   if (!isConnected) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center bg-gray-950 text-sm text-gray-500">
+      <div className="flex h-full flex-col items-center justify-center bg-gray-950 text-sm text-gray-500">
         <p>Connect to start chatting</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col bg-gray-950">
-      {/* Message area */}
-      <div
-        ref={scrollRef}
-        className="overflow-x-hidden overflow-y-auto px-2 py-4"
-        style={{ maxHeight: `calc(100vh - ${INPUT_BAR_HEIGHT}px)` }}
-      >
+    <div className="flex h-full flex-col bg-gray-950">
+      {/* Message area — flex-1 + min-h-0 lets it shrink and scroll */}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto px-2 py-4">
         {messages.length === 0 && !isStreaming && (
           <div className="flex h-full items-center justify-center text-sm text-gray-600">
             Send a message to start
