@@ -242,6 +242,8 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     const result = (await client.request('sessions.list', {
       includeDerivedTitles: true,
       includeLastMessage: true,
+      activeMinutes: 1440, // Last 24 hours
+      limit: 20,
     })) as { sessions: Record<string, unknown>[] };
 
     // Gateway returns `key` but our type uses `sessionKey` — normalise
