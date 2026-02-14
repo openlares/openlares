@@ -199,7 +199,10 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
       ...m,
       content: normaliseContent(m.content),
     }));
-    set({ messages: normalised });
+
+    // Filter out system noise
+    const filtered = normalised.filter(shouldDisplayMessage);
+    set({ messages: filtered });
   },
 }));
 
@@ -214,6 +217,45 @@ type StoreSetter = (
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Filter out system noise from chat messages.
+ *
+ * Removes heartbeat prompts, system events, tool call metadata, and other
+ * OpenClaw-internal messages that shouldn't be displayed in the chat UI.
+ *
+ * @param message The message to check
+ * @returns true if the message should be kept, false if it should be filtered out
+ */
+export function shouldDisplayMessage(message: ChatMessage): boolean {
+  const content = normaliseContent(message.content);
+
+  // Skip system messages
+  if (message.role === 'system') {
+    return false;
+  }
+
+  // Skip heartbeat-related user messages
+  if (message.role === 'user') {
+    if (content.includes('Read HEARTBEAT.md') || content.includes('HEARTBEAT_OK')) {
+      return false;
+    }
+    // Skip metadata envelope messages
+    if (content.startsWith('Conversation info (untrusted metadata)')) {
+      return false;
+    }
+  }
+
+  // Skip assistant heartbeat/no-reply responses
+  if (message.role === 'assistant') {
+    const trimmed = content.trim();
+    if (trimmed === 'HEARTBEAT_OK' || trimmed === 'NO_REPLY') {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 /**
  * Normalise message content from the gateway.
@@ -251,11 +293,13 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
             content: last.content + payload.message,
           };
         } else {
-          msgs.push({
+          const newMessage: ChatMessage = {
             role: 'assistant',
             content: payload.message!,
             timestamp: Date.now(),
-          });
+          };
+          // Only add if it would pass the filter (but allow partial content during streaming)
+          msgs.push(newMessage);
         }
         return { messages: msgs, isStreaming: true };
       });
@@ -268,14 +312,25 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
         const lastIdx = msgs.length - 1;
         const last = msgs[lastIdx];
 
+        const finalMessage: ChatMessage = {
+          role: 'assistant',
+          content: payload.message!,
+          timestamp: Date.now(),
+        };
+
+        // Check if final message should be displayed
+        if (!shouldDisplayMessage(finalMessage)) {
+          // Remove the streaming message if the final version shouldn't be displayed
+          if (last && last.role === 'assistant') {
+            msgs.pop();
+          }
+          return { messages: msgs, isStreaming: false };
+        }
+
         if (last && last.role === 'assistant') {
-          msgs[lastIdx] = { ...last, content: payload.message! };
+          msgs[lastIdx] = finalMessage;
         } else {
-          msgs.push({
-            role: 'assistant',
-            content: payload.message!,
-            timestamp: Date.now(),
-          });
+          msgs.push(finalMessage);
         }
         return { messages: msgs, isStreaming: false };
       });
