@@ -64,7 +64,7 @@ function MessageItem({ message }: { message: ChatMessage }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Chat — ChatGPT-style chat interface.
+ * Chat — conversational message interface with streaming support.
  *
  * Presentational component that receives messages and callbacks as props.
  * Full-width messages with alternating backgrounds, streaming indicator,
