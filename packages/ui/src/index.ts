@@ -5,7 +5,5 @@
  * Styled with Tailwind CSS.
  */
 
-// TODO: StatusIndicator (connected/disconnected badge)
-// TODO: ActivityFeed (scrollable event list)
-// TODO: Panel (resizable sidebar/panel wrapper)
-// TODO: ChatBubble
+export { ConnectionStatus } from './components/ConnectionStatus';
+export { ActivityFeed } from './components/ActivityFeed';
