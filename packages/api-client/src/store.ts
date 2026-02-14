@@ -242,9 +242,19 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     const result = (await client.request('sessions.list', {
       includeDerivedTitles: true,
       includeLastMessage: true,
-    })) as { sessions: SessionSummary[] };
+    })) as { sessions: Record<string, unknown>[] };
 
-    set({ sessions: result.sessions });
+    // Gateway returns `key` but our type uses `sessionKey` — normalise
+    const sessions: SessionSummary[] = result.sessions.map((s) => ({
+      sessionKey: (s.sessionKey ?? s.key ?? '') as string,
+      title: (s.title ?? s.displayName ?? '') as string,
+      lastMessage: (s.lastMessage ?? '') as string,
+      active: Boolean(s.active),
+      createdAt: (s.createdAt ?? 0) as number,
+      updatedAt: (s.updatedAt ?? 0) as number,
+    }));
+
+    set({ sessions });
   },
 
   loadHistory: async (sessionKey) => {
