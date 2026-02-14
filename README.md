@@ -6,6 +6,10 @@ Give your AI agents a face, a personality, and a home.
 
 > **Status:** Early development — not ready for use yet.
 
+## Why "Lares"?
+
+In ancient Rome, [Lares](https://en.wikipedia.org/wiki/Lares) were guardian spirits of the household — protectors that watched over the home and family. OpenLares brings that idea into the digital age: personal AI companions that watch over your digital life.
+
 ## What is OpenLares?
 
 OpenLares connects to an [OpenClaw](https://openclaw.ai) Gateway and provides a visual interface for your AI agents. Watch them work in real-time, customize their personalities, and interact with them through an animated workspace.
