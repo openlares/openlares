@@ -16,7 +16,12 @@ import { useStore } from 'zustand';
 
 import type { ActivityItem, ChatMessage, ConnectionStatus, GatewayConfig } from '@openlares/core';
 import { GatewayClient } from './gateway-client';
-import type { ChatEventPayload, AgentEventPayload, SessionSummary } from './protocol';
+import type {
+  ChatEventPayload,
+  ChatHistoryResult,
+  AgentEventPayload,
+  SessionSummary,
+} from './protocol';
 
 // ---------------------------------------------------------------------------
 // State shape
@@ -37,6 +42,8 @@ export interface GatewayState {
 
   /** Chat messages for the active session. */
   messages: ChatMessage[];
+  /** Whether an assistant response is currently streaming. */
+  isStreaming: boolean;
   /** Activity feed items (tool calls, status changes, etc.). */
   activityItems: ActivityItem[];
 }
@@ -53,6 +60,8 @@ export interface GatewayActions {
   selectSession: (sessionKey: string) => void;
   /** Refresh the session list from the gateway. */
   refreshSessions: () => Promise<void>;
+  /** Load chat history for a given session. */
+  loadHistory: (sessionKey: string) => Promise<void>;
 }
 
 export type GatewayStore = GatewayState & GatewayActions;
@@ -76,6 +85,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   sessions: [],
   activeSessionKey: null,
   messages: [],
+  isStreaming: false,
   activityItems: [],
 
   // Actions
@@ -101,8 +111,22 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     set({ client, connectionStatus: 'connecting', error: null });
 
     try {
-      await client.connect();
-      set({ connectionStatus: 'connected', error: null });
+      const hello = await client.connect();
+      const mainSessionKey = hello.snapshot.sessionDefaults?.mainSessionKey ?? null;
+      set({
+        connectionStatus: 'connected',
+        error: null,
+        activeSessionKey: mainSessionKey,
+      });
+
+      // Auto-load chat history for the main session
+      if (mainSessionKey) {
+        get()
+          .loadHistory(mainSessionKey)
+          .catch(() => {
+            // History load is best-effort; connection is already live
+          });
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Connection failed';
       set({ error: message, connectionStatus: 'error' });
@@ -118,6 +142,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
       client: null,
       connectionStatus: 'disconnected',
       error: null,
+      isStreaming: false,
     });
   },
 
@@ -159,6 +184,18 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 
     set({ sessions: result.sessions });
   },
+
+  loadHistory: async (sessionKey) => {
+    const client = get().client;
+    if (!client) return;
+
+    const result = (await client.request('chat.history', {
+      sessionKey,
+      limit: 50,
+    })) as ChatHistoryResult;
+
+    set({ messages: result.messages });
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -192,7 +229,7 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
             timestamp: Date.now(),
           });
         }
-        return { messages: msgs };
+        return { messages: msgs, isStreaming: true };
       });
     }
 
@@ -212,11 +249,16 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
             timestamp: Date.now(),
           });
         }
-        return { messages: msgs };
+        return { messages: msgs, isStreaming: false };
       });
     }
 
+    if (payload.state === 'aborted') {
+      set({ isStreaming: false });
+    }
+
     if (payload.state === 'error') {
+      set({ isStreaming: false });
       set((state) => ({
         activityItems: [
           ...state.activityItems,

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Sidebar } from '@/components/sidebar';
-import { ActivityPanel } from '@/components/activity-panel';
+import { ChatPanel } from '@/components/chat-panel';
 import { GatewayProvider } from '@/providers/gateway-provider';
 
 export const metadata: Metadata = {
@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex h-screen">
             <Sidebar />
             <main className="flex-1">{children}</main>
-            <ActivityPanel />
+            <ChatPanel />
           </div>
         </GatewayProvider>
       </body>
