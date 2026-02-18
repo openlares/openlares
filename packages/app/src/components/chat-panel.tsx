@@ -9,6 +9,9 @@ export function ChatPanel() {
   const isStreaming = useGatewayStore((s) => s.isStreaming);
   const sendMessage = useGatewayStore((s) => s.sendMessage);
   const closeChat = useGatewayStore((s) => s.closeChat);
+  const loadMoreHistory = useGatewayStore((s) => s.loadMoreHistory);
+  const isLoadingMore = useGatewayStore((s) => s.historyLoading);
+  const hasMore = useGatewayStore((s) => s.hasMoreHistory);
   const activeSessionKey = useGatewayStore((s) => s.activeSessionKey);
   const sessions = useGatewayStore((s) => s.sessions);
 
@@ -44,6 +47,9 @@ export function ChatPanel() {
           isStreaming={isStreaming}
           isConnected={connectionStatus === 'connected'}
           onSendMessage={(text) => void sendMessage(text)}
+          onLoadMore={() => void loadMoreHistory()}
+          isLoadingMore={isLoadingMore}
+          hasMore={hasMore}
         />
       </div>
     </div>

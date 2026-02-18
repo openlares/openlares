@@ -207,6 +207,15 @@ describe('gatewayStore.selectSession', () => {
     expect(gatewayStore.getState().showChat).toBe(true);
   });
 
+
+
+  it('resets pagination state when switching sessions', () => {
+    gatewayStore.setState({ hasMoreHistory: false, historyLoading: true, historyLimit: 100 });
+    gatewayStore.getState().selectSession('session-c');
+    expect(gatewayStore.getState().hasMoreHistory).toBe(true);
+    expect(gatewayStore.getState().historyLoading).toBe(false);
+    expect(gatewayStore.getState().historyLimit).toBe(20);
+  });
   it('updates activeSessionKey', () => {
     gatewayStore.getState().selectSession('session-b');
     expect(gatewayStore.getState().activeSessionKey).toBe('session-b');

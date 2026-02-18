@@ -91,6 +91,12 @@ export interface GatewayState {
   activityItems: ActivityItem[];
   /** Whether the chat panel should be visible. */
   showChat: boolean;
+  /** Whether older messages exist beyond what is loaded. */
+  hasMoreHistory: boolean;
+  /** Whether a history load is in progress. */
+  historyLoading: boolean;
+  /** Current history limit (grows on scroll-up). */
+  historyLimit: number;
 }
 
 export interface GatewayActions {
@@ -107,6 +113,8 @@ export interface GatewayActions {
   refreshSessions: () => Promise<void>;
   /** Load chat history for a given session. */
   loadHistory: (sessionKey: string) => Promise<void>;
+  /** Load older messages (increases limit and re-fetches). */
+  loadMoreHistory: () => Promise<void>;
   /** Show the chat panel. */
   openChat: () => void;
   /** Hide the chat panel. */
@@ -137,6 +145,9 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   isStreaming: false,
   activityItems: [],
   showChat: false,
+  hasMoreHistory: true,
+  historyLoading: false,
+  historyLimit: 20,
 
   // Actions
   connect: async (config) => {
@@ -227,7 +238,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   },
 
   selectSession: (sessionKey) => {
-    set({ activeSessionKey: sessionKey, messages: [], activityItems: [], isStreaming: false, showChat: true });
+    set({ activeSessionKey: sessionKey, messages: [], activityItems: [], isStreaming: false, showChat: true, hasMoreHistory: true, historyLoading: false, historyLimit: 20 });
     get()
       .loadHistory(sessionKey)
       .catch(() => {
@@ -263,9 +274,12 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     const client = get().client;
     if (!client) return;
 
+    const limit = get().historyLimit;
+    set({ historyLoading: true });
+
     const result = (await client.request('chat.history', {
       sessionKey,
-      limit: 50,
+      limit,
     })) as ChatHistoryResult;
 
     // Normalise and clean content
@@ -284,7 +298,23 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
           : cleanMessageContent(m.content as string),
       }))
       .filter((m) => (m.content as string).trim().length > 0);
-    set({ messages: filtered });
+    set({
+      messages: filtered,
+      historyLoading: false,
+      // If we got fewer raw messages than requested, we've reached the start
+      hasMoreHistory: result.messages.length >= limit,
+    });
+  },
+
+  loadMoreHistory: async () => {
+    const { activeSessionKey, hasMoreHistory, historyLoading, historyLimit } = get();
+    if (!activeSessionKey || !hasMoreHistory || historyLoading) return;
+
+    // Double the limit and re-fetch
+    const newLimit = Math.min(historyLimit * 2, 200);
+    set({ historyLimit: newLimit });
+
+    await get().loadHistory(activeSessionKey);
   },
 
   openChat: () => {

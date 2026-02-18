@@ -19,6 +19,12 @@ export interface ChatProps {
   isConnected: boolean;
   /** Called when the user submits a message. */
   onSendMessage: (text: string) => void;
+  /** Called when user scrolls to the top (load older messages). */
+  onLoadMore?: () => void;
+  /** Whether older messages are being loaded. */
+  isLoadingMore?: boolean;
+  /** Whether there are more messages to load. */
+  hasMore?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +173,14 @@ function MessageItem({ message }: { message: ChatMessage }) {
   );
 }
 
+function LoadingMoreIndicator() {
+  return (
+    <div className="flex items-center justify-center py-3">
+      <span className="text-xs text-gray-500">Loading older messages…</span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -178,7 +192,7 @@ function MessageItem({ message }: { message: ChatMessage }) {
  * (auto-scroll to new messages). The parent must provide a definite
  * height (e.g. via flex layout).
  */
-export function Chat({ messages, isStreaming, isConnected, onSendMessage }: ChatProps) {
+export function Chat({ messages, isStreaming, isConnected, onSendMessage, onLoadMore, isLoadingMore, hasMore }: ChatProps) {
   const [input, setInput] = useState('');
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -232,8 +246,20 @@ export function Chat({ messages, isStreaming, isConnected, onSendMessage }: Chat
             followOutput="smooth"
             initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
             className="[&>div]:overflow-x-hidden"
+            startReached={() => {
+              if (onLoadMore && hasMore && !isLoadingMore) {
+                onLoadMore();
+              }
+            }}
             itemContent={(index, msg) => <MessageItem message={msg} />}
             components={{
+              Header: () =>
+                isLoadingMore ? <LoadingMoreIndicator /> :
+                hasMore === false ? (
+                  <div className="flex items-center justify-center py-2">
+                    <span className="text-xs text-gray-600">Beginning of conversation</span>
+                  </div>
+                ) : null,
               Footer: () =>
                 isStreaming && messages[messages.length - 1]?.role !== 'assistant' ? (
                   <TypingIndicator />
