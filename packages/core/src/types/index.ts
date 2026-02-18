@@ -31,7 +31,7 @@ export interface GatewayConfig {
  * A chat message in a session.
  */
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp: number;
 }

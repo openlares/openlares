@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, type KeyboardEvent } from 'react';
+import { useRef, useState, useCallback, useEffect, type KeyboardEvent } from 'react';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '@openlares/core';
@@ -18,7 +19,23 @@ export interface ChatProps {
   isConnected: boolean;
   /** Called when the user submits a message. */
   onSendMessage: (text: string) => void;
+  /** Called when user scrolls to the top (load older messages). */
+  onLoadMore?: () => void;
+  /** Whether older messages are being loaded. */
+  isLoadingMore?: boolean;
+  /** Whether there are more messages to load. */
+  hasMore?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Maximum characters to render per message. Prevents browser freeze on huge payloads. */
+const MAX_DISPLAY_LENGTH = 2000;
+
+/** Truncation suffix shown when a message is cut. */
+const TRUNCATION_NOTICE = '\n\n… (message truncated)';
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -48,26 +65,8 @@ function TypingIndicator() {
 
 /**
  * Strip OpenClaw metadata envelope from user messages.
- *
- * When content contains a block like:
- * ```
- * Conversation info (untrusted metadata):
- * ```json
- * {...}
- * ```
- *
- * Sender (untrusted metadata):
- * ```json
- * {...}
- * ```
- *
- * <actual message>
- * ```
- *
- * Extract and return only the `<actual message>` part.
  */
 function stripMetadataEnvelope(content: string): string {
-  // Pattern to match metadata envelope blocks
   const metadataPattern =
     /^(Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*)?(Sender \(untrusted metadata\):\s*```json[\s\S]*?```\s*)?([\s\S]*)$/;
 
@@ -81,11 +80,6 @@ function stripMetadataEnvelope(content: string): string {
 
 /**
  * Safely extract displayable text from message content.
- *
- * The gateway may return `content` as a plain string, an array of
- * `{ type: "text", text: "..." }` blocks (OpenAI/Anthropic format),
- * or even a nested message object. We flatten everything to a string
- * so rendering never chokes on non-primitive React children.
  */
 function renderContent(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -104,20 +98,21 @@ function renderContent(content: unknown): string {
 
 function MessageItem({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
-
-  // Get the raw content first
   const rawContent = renderContent(message.content);
+  const strippedContent = isUser ? stripMetadataEnvelope(rawContent) : rawContent;
 
-  // For user messages, strip metadata envelope
-  const displayContent = isUser ? stripMetadataEnvelope(rawContent) : rawContent;
+  // Truncate very long messages to prevent browser freeze
+  const displayContent =
+    strippedContent.length > MAX_DISPLAY_LENGTH
+      ? strippedContent.slice(0, MAX_DISPLAY_LENGTH) + TRUNCATION_NOTICE
+      : strippedContent;
 
   return (
-    <div className={`px-6 py-4 ${isUser ? 'rounded-lg bg-gray-800' : ''}`}>
+    <div className={`px-4 py-4 overflow-hidden ${isUser ? 'rounded-lg bg-gray-800' : ''}`}>
       <span className={`text-xs font-medium ${isUser ? 'text-gray-400' : 'text-amber-400'}`}>
         {isUser ? 'You' : 'Agent'}
       </span>
       {isUser ? (
-        // User messages: plain text with cleaned content
         <p
           className="mt-1 break-words text-sm leading-relaxed text-gray-200"
           style={{ overflowWrap: 'anywhere' }}
@@ -125,12 +120,10 @@ function MessageItem({ message }: { message: ChatMessage }) {
           {displayContent}
         </p>
       ) : (
-        // Agent messages: markdown rendering
         <div className="mt-1 break-words text-sm leading-relaxed text-gray-200 prose prose-invert prose-sm max-w-none">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              // Style code blocks with dark background
               code: ({ children, className }) => {
                 const isInline = !className;
                 return isInline ? (
@@ -146,7 +139,6 @@ function MessageItem({ message }: { message: ChatMessage }) {
                   {children}
                 </pre>
               ),
-              // Style links with amber color
               a: ({ children, href }) => (
                 <a
                   href={href}
@@ -157,7 +149,6 @@ function MessageItem({ message }: { message: ChatMessage }) {
                   {children}
                 </a>
               ),
-              // Style tables
               table: ({ children }) => (
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse border border-gray-600">
@@ -183,12 +174,13 @@ function MessageItem({ message }: { message: ChatMessage }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Layout constants
-// ---------------------------------------------------------------------------
-
-/** Height of the input bar (border + padding + textarea + padding). */
-const INPUT_BAR_HEIGHT = 56;
+function LoadingMoreIndicator() {
+  return (
+    <div className="flex items-center justify-center py-3">
+      <span className="text-xs text-gray-500">Loading older messages…</span>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -197,27 +189,22 @@ const INPUT_BAR_HEIGHT = 56;
 /**
  * Chat — conversational message interface with streaming support.
  *
- * Presentational component that receives messages and callbacks as props.
- * Full-width messages (ChatGPT-style), streaming indicator, and a text
- * input pinned at the bottom.
- *
- * Layout note: the message area uses an explicit `max-height` with
- * `calc(100vh - ...)` to guarantee scroll activation. Tailwind flex
- * utilities alone couldn't enforce a definite height across the nested
- * flex chain in all browsers / bundler configurations.
+ * Uses react-virtuoso for reliable scroll behavior with `followOutput`
+ * (auto-scroll to new messages). The parent must provide a definite
+ * height (e.g. via flex layout).
  */
-export function Chat({ messages, isStreaming, isConnected, onSendMessage }: ChatProps) {
+export function Chat({
+  messages,
+  isStreaming,
+  isConnected,
+  onSendMessage,
+  onLoadMore,
+  isLoadingMore,
+  hasMore,
+}: ChatProps) {
   const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-scroll to bottom when new messages arrive or during streaming
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages, isStreaming]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -245,38 +232,55 @@ export function Chat({ messages, isStreaming, isConnected, onSendMessage }: Chat
     [handleSend],
   );
 
-  // Not connected state
   if (!isConnected) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center bg-gray-950 text-sm text-gray-500">
+      <div className="flex h-full flex-col items-center justify-center bg-gray-950 text-sm text-gray-500">
         <p>Connect to start chatting</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col bg-gray-950">
-      {/* Message area */}
-      <div
-        ref={scrollRef}
-        className="overflow-x-hidden overflow-y-auto px-2 py-4"
-        style={{ maxHeight: `calc(100vh - ${INPUT_BAR_HEIGHT}px)` }}
-      >
-        {messages.length === 0 && !isStreaming && (
+    <div className="flex h-full flex-col bg-gray-950">
+      {/* Message area — Virtuoso handles scroll + auto-follow */}
+      <div className="flex-1 min-h-0">
+        {messages.length === 0 && !isStreaming ? (
           <div className="flex h-full items-center justify-center text-sm text-gray-600">
             Send a message to start
           </div>
+        ) : (
+          <Virtuoso
+            ref={virtuosoRef}
+            data={messages}
+            followOutput="smooth"
+            initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
+            className="[&>div]:overflow-x-hidden"
+            startReached={() => {
+              if (onLoadMore && hasMore && !isLoadingMore) {
+                onLoadMore();
+              }
+            }}
+            itemContent={(index, msg) => <MessageItem message={msg} />}
+            components={{
+              Header: () =>
+                isLoadingMore ? (
+                  <LoadingMoreIndicator />
+                ) : hasMore === false ? (
+                  <div className="flex items-center justify-center py-2">
+                    <span className="text-xs text-gray-600">Beginning of conversation</span>
+                  </div>
+                ) : null,
+              Footer: () =>
+                isStreaming && messages[messages.length - 1]?.role !== 'assistant' ? (
+                  <TypingIndicator />
+                ) : null,
+            }}
+          />
         )}
-
-        {messages.map((msg, i) => (
-          <MessageItem key={i} message={msg} />
-        ))}
-
-        {isStreaming && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}
       </div>
 
       {/* Input bar — pinned to bottom */}
-      <div className="mt-auto shrink-0 border-t border-gray-800 bg-gray-900 p-3">
+      <div className="shrink-0 border-t border-gray-800 bg-gray-900 p-3">
         <div className="flex gap-2">
           <textarea
             ref={textareaRef}

@@ -91,6 +91,12 @@ export interface GatewayState {
   activityItems: ActivityItem[];
   /** Whether the chat panel should be visible. */
   showChat: boolean;
+  /** Whether older messages exist beyond what is loaded. */
+  hasMoreHistory: boolean;
+  /** Whether a history load is in progress. */
+  historyLoading: boolean;
+  /** Current history limit (grows on scroll-up). */
+  historyLimit: number;
 }
 
 export interface GatewayActions {
@@ -107,6 +113,8 @@ export interface GatewayActions {
   refreshSessions: () => Promise<void>;
   /** Load chat history for a given session. */
   loadHistory: (sessionKey: string) => Promise<void>;
+  /** Load older messages (increases limit and re-fetches). */
+  loadMoreHistory: () => Promise<void>;
   /** Show the chat panel. */
   openChat: () => void;
   /** Hide the chat panel. */
@@ -137,6 +145,9 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   isStreaming: false,
   activityItems: [],
   showChat: false,
+  hasMoreHistory: true,
+  historyLoading: false,
+  historyLimit: 20,
 
   // Actions
   connect: async (config) => {
@@ -227,7 +238,16 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   },
 
   selectSession: (sessionKey) => {
-    set({ activeSessionKey: sessionKey, messages: [], activityItems: [], showChat: true });
+    set({
+      activeSessionKey: sessionKey,
+      messages: [],
+      activityItems: [],
+      isStreaming: false,
+      showChat: true,
+      hasMoreHistory: true,
+      historyLoading: false,
+      historyLimit: 20,
+    });
     get()
       .loadHistory(sessionKey)
       .catch(() => {
@@ -263,20 +283,48 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     const client = get().client;
     if (!client) return;
 
+    const limit = get().historyLimit;
+    set({ historyLoading: true });
+
     const result = (await client.request('chat.history', {
       sessionKey,
-      limit: 50,
+      limit,
     })) as ChatHistoryResult;
 
-    // Normalise content — gateway may return array-of-blocks format
+    // Normalise and clean content
     const normalised = result.messages.map((m) => ({
       ...m,
       content: normaliseContent(m.content),
     }));
 
-    // Filter out system noise
-    const filtered = normalised.filter(shouldDisplayMessage);
-    set({ messages: filtered });
+    // Filter out system noise, then clean remaining messages
+    const filtered = normalised
+      .filter(shouldDisplayMessage)
+      .map((m) => ({
+        ...m,
+        content:
+          m.role === 'user'
+            ? stripMetadataEnvelope(m.content as string)
+            : cleanMessageContent(m.content as string),
+      }))
+      .filter((m) => (m.content as string).trim().length > 0);
+    set({
+      messages: filtered,
+      historyLoading: false,
+      // If we got fewer raw messages than requested, we've reached the start
+      hasMoreHistory: result.messages.length >= limit,
+    });
+  },
+
+  loadMoreHistory: async () => {
+    const { activeSessionKey, hasMoreHistory, historyLoading, historyLimit } = get();
+    if (!activeSessionKey || !hasMoreHistory || historyLoading) return;
+
+    // Double the limit and re-fetch
+    const newLimit = Math.min(historyLimit * 2, 200);
+    set({ historyLimit: newLimit });
+
+    await get().loadHistory(activeSessionKey);
   },
 
   openChat: () => {
@@ -301,6 +349,85 @@ type StoreSetter = (
 // ---------------------------------------------------------------------------
 
 /**
+ * Strip OpenClaw metadata envelope from user messages.
+ * Gateway stores Discord messages with conversation/sender metadata prepended.
+ */
+function stripMetadataEnvelope(content: string): string {
+  // Match optional Conversation info block, optional Sender block, then capture the rest
+  const parts: string[] = [];
+  let remaining = content;
+
+  // Try to strip "Conversation info" block
+  const convPattern = /^Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/;
+  const convMatch = remaining.match(convPattern);
+  if (convMatch) {
+    remaining = remaining.slice(convMatch[0].length);
+  }
+
+  // Try to strip "Sender" block
+  const senderPattern = /^Sender \(untrusted metadata\):\s*```json[\s\S]*?```\s*/;
+  const senderMatch = remaining.match(senderPattern);
+  if (senderMatch) {
+    remaining = remaining.slice(senderMatch[0].length);
+  }
+
+  return remaining.trim();
+}
+
+/**
+ * Clean message content for display.
+ *
+ * Strips tool call/result markers and metadata that OpenClaw embeds
+ * in session transcripts. Mirrors the approach used by OpenClaw's
+ * built-in control-ui.
+ */
+export function cleanMessageContent(content: string): string {
+  const lines = content.split('\n');
+  const cleaned: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip tool call markers: [Tool: exec], [Tool: read], etc.
+    if (/^\[Tool:\s*[^\]]+\]/.test(trimmed)) continue;
+
+    // Skip tool result markers
+    if (trimmed.startsWith('[Tool Result]')) continue;
+
+    // Skip tool use blocks (Anthropic format)
+    if (trimmed.startsWith('[tool_use:')) continue;
+    if (trimmed.startsWith('[tool_result:')) continue;
+
+    cleaned.push(line);
+  }
+
+  return cleaned.join('\n').trim();
+}
+
+/**
+ * Check if content is primarily machine data (JSON, huge tool output)
+ * rather than human-readable text.
+ */
+function isMachineData(content: string): boolean {
+  const trimmed = content.trim();
+
+  // Pure JSON object or array
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      JSON.parse(trimmed);
+      return true;
+    } catch {
+      // Not valid JSON, might be human text that starts with {
+    }
+  }
+
+  return false;
+}
+
+/**
  * Filter out system noise from chat messages.
  *
  * Removes heartbeat prompts, system events, tool call metadata, and other
@@ -312,8 +439,13 @@ type StoreSetter = (
 export function shouldDisplayMessage(message: ChatMessage): boolean {
   const content = normaliseContent(message.content);
 
-  // Skip system messages
-  if (message.role === 'system') {
+  // Skip system and tool messages
+  if (message.role === 'system' || message.role === 'tool') {
+    return false;
+  }
+
+  // Skip assistant messages that contain tool_calls (not human text)
+  if (message.role === 'assistant' && typeof message.content === 'object') {
     return false;
   }
 
@@ -322,8 +454,17 @@ export function shouldDisplayMessage(message: ChatMessage): boolean {
     if (content.includes('Read HEARTBEAT.md') || content.includes('HEARTBEAT_OK')) {
       return false;
     }
-    // Skip metadata envelope messages
-    if (content.startsWith('Conversation info (untrusted metadata)')) {
+    // Strip metadata envelope, then check if there's actual user content
+    const stripped = stripMetadataEnvelope(content);
+    if (!stripped || stripped.length === 0) {
+      return false;
+    }
+  }
+
+  // Skip messages that are pure machine data (JSON dumps, tool output)
+  if (message.role === 'assistant') {
+    const cleaned = cleanMessageContent(content);
+    if (isMachineData(cleaned)) {
       return false;
     }
   }
@@ -362,6 +503,10 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
   // Chat streaming events
   client.on('chat', (raw) => {
     const payload = raw as ChatEventPayload;
+
+    // Only process events for the currently viewed session
+    const { activeSessionKey } = gatewayStore.getState();
+    if (payload.sessionKey !== activeSessionKey) return;
 
     if (payload.state === 'delta' && payload.message) {
       // Append delta text to the last assistant message, or create one
