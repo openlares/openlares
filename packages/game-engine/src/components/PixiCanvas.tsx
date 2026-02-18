@@ -23,6 +23,15 @@ interface SessionAvatar {
   color: number;
   isActive: boolean;
   hasRecentActivity: boolean;
+  /** Animation state */
+  phase: number;
+  driftAngle: number;
+  driftSpeed: number;
+  driftRadius: number;
+  anchorX: number;
+  anchorY: number;
+  targetScale: number;
+  currentScale: number;
 }
 
 interface PixiCanvasProps {
@@ -239,11 +248,13 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
 
           // Hover effects
           avatarContainer.on('pointerenter', () => {
-            avatarContainer.scale.set(1.1);
+            const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
+            if (av) av.targetScale = 1.15;
           });
 
           avatarContainer.on('pointerleave', () => {
-            avatarContainer.scale.set(1.0);
+            const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
+            if (av) av.targetScale = 1.0;
           });
 
           app.stage.addChild(avatarContainer);
@@ -260,6 +271,15 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             color,
             isActive,
             hasRecentActivity: hasRecent,
+            // Animation state — each avatar gets unique timing
+            phase: Math.random() * Math.PI * 2,
+            driftAngle: Math.random() * Math.PI * 2,
+            driftSpeed: 0.2 + Math.random() * 0.3,
+            driftRadius: 3 + Math.random() * 5,
+            anchorX: position.x,
+            anchorY: position.y,
+            targetScale: 1.0,
+            currentScale: 1.0,
           };
 
           avatarsRef.current.push(avatar);
@@ -271,6 +291,40 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
 
       // Re-render on resize
       app.renderer.on('resize', renderAvatars);
+
+      // Animation loop — breathing, floating, smooth hover
+      app.ticker.add((ticker) => {
+        const time = app.ticker.lastTime / 1000; // seconds
+        const dt = ticker.deltaTime / 60; // normalised delta
+
+        for (const avatar of avatarsRef.current) {
+          // Breathing: gentle scale oscillation
+          const breathAmp = avatar.isActive ? 0.06 : 0.025;
+          const breathSpeed = avatar.isActive ? 2.5 : 1.2;
+          const breath = Math.sin(time * breathSpeed + avatar.phase) * breathAmp;
+
+          // Smooth hover: lerp currentScale toward targetScale
+          avatar.currentScale +=
+            (avatar.targetScale - avatar.currentScale) * 0.12 * ((dt * 60) / 60);
+
+          // Apply combined scale
+          const finalScale = avatar.currentScale + breath;
+          avatar.container.scale.set(finalScale);
+
+          // Floating: slow circular drift around anchor
+          avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
+          const driftX = Math.cos(avatar.driftAngle) * avatar.driftRadius;
+          const driftY = Math.sin(avatar.driftAngle * 0.7 + avatar.phase) * avatar.driftRadius;
+          avatar.container.x = avatar.anchorX + driftX;
+          avatar.container.y = avatar.anchorY + driftY;
+
+          // Active session: pulsing amber glow (alpha oscillation)
+          if (avatar.isActive) {
+            const glowAlpha = 0.6 + Math.sin(time * 3 + avatar.phase) * 0.3;
+            avatar.graphic.alpha = glowAlpha;
+          }
+        }
+      });
     }
 
     setup().catch(console.error);
