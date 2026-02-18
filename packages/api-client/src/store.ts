@@ -268,14 +268,22 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
       limit: 50,
     })) as ChatHistoryResult;
 
-    // Normalise content — gateway may return array-of-blocks format
+    // Normalise and clean content
     const normalised = result.messages.map((m) => ({
       ...m,
       content: normaliseContent(m.content),
     }));
 
-    // Filter out system noise
-    const filtered = normalised.filter(shouldDisplayMessage);
+    // Filter out system noise, then clean remaining messages
+    const filtered = normalised
+      .filter(shouldDisplayMessage)
+      .map((m) => ({
+        ...m,
+        content: m.role === 'user'
+          ? stripMetadataEnvelope(m.content as string)
+          : cleanMessageContent(m.content as string),
+      }))
+      .filter((m) => (m.content as string).trim().length > 0);
     set({ messages: filtered });
   },
 
@@ -327,6 +335,57 @@ function stripMetadataEnvelope(content: string): string {
 }
 
 /**
+ * Clean message content for display.
+ *
+ * Strips tool call/result markers and metadata that OpenClaw embeds
+ * in session transcripts. Mirrors the approach used by OpenClaw's
+ * built-in control-ui.
+ */
+export function cleanMessageContent(content: string): string {
+  const lines = content.split('\n');
+  const cleaned: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip tool call markers: [Tool: exec], [Tool: read], etc.
+    if (/^\[Tool:\s*[^\]]+\]/.test(trimmed)) continue;
+
+    // Skip tool result markers
+    if (trimmed.startsWith('[Tool Result]')) continue;
+
+    // Skip tool use blocks (Anthropic format)
+    if (trimmed.startsWith('[tool_use:')) continue;
+    if (trimmed.startsWith('[tool_result:')) continue;
+
+    cleaned.push(line);
+  }
+
+  return cleaned.join('\n').trim();
+}
+
+/**
+ * Check if content is primarily machine data (JSON, huge tool output)
+ * rather than human-readable text.
+ */
+function isMachineData(content: string): boolean {
+  const trimmed = content.trim();
+
+  // Pure JSON object or array
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      JSON.parse(trimmed);
+      return true;
+    } catch {
+      // Not valid JSON, might be human text that starts with {
+    }
+  }
+
+  return false;
+}
+
+/**
  * Filter out system noise from chat messages.
  *
  * Removes heartbeat prompts, system events, tool call metadata, and other
@@ -338,8 +397,13 @@ function stripMetadataEnvelope(content: string): string {
 export function shouldDisplayMessage(message: ChatMessage): boolean {
   const content = normaliseContent(message.content);
 
-  // Skip system messages
-  if (message.role === 'system') {
+  // Skip system and tool messages
+  if (message.role === 'system' || message.role === 'tool') {
+    return false;
+  }
+
+  // Skip assistant messages that contain tool_calls (not human text)
+  if (message.role === 'assistant' && typeof message.content === 'object') {
     return false;
   }
 
@@ -351,6 +415,14 @@ export function shouldDisplayMessage(message: ChatMessage): boolean {
     // Strip metadata envelope, then check if there's actual user content
     const stripped = stripMetadataEnvelope(content);
     if (!stripped || stripped.length === 0) {
+      return false;
+    }
+  }
+
+  // Skip messages that are pure machine data (JSON dumps, tool output)
+  if (message.role === 'assistant') {
+    const cleaned = cleanMessageContent(content);
+    if (isMachineData(cleaned)) {
       return false;
     }
   }

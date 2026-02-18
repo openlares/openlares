@@ -22,6 +22,16 @@ export interface ChatProps {
 }
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Maximum characters to render per message. Prevents browser freeze on huge payloads. */
+const MAX_DISPLAY_LENGTH = 2000;
+
+/** Truncation suffix shown when a message is cut. */
+const TRUNCATION_NOTICE = '\n\n… (message truncated)';
+
+// ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
@@ -83,7 +93,12 @@ function renderContent(content: unknown): string {
 function MessageItem({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
   const rawContent = renderContent(message.content);
-  const displayContent = isUser ? stripMetadataEnvelope(rawContent) : rawContent;
+  const strippedContent = isUser ? stripMetadataEnvelope(rawContent) : rawContent;
+
+  // Truncate very long messages to prevent browser freeze
+  const displayContent = strippedContent.length > MAX_DISPLAY_LENGTH
+    ? strippedContent.slice(0, MAX_DISPLAY_LENGTH) + TRUNCATION_NOTICE
+    : strippedContent;
 
   return (
     <div className={`px-4 py-4 overflow-hidden ${isUser ? 'rounded-lg bg-gray-800' : ''}`}>

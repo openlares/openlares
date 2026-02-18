@@ -50,5 +50,5 @@ export { useGateway } from './use-gateway';
 export type { UseGatewayResult } from './use-gateway';
 
 // Zustand store
-export { gatewayStore, useGatewayStore, cleanSessionName, shouldDisplayMessage } from './store';
+export { gatewayStore, useGatewayStore, cleanSessionName, shouldDisplayMessage, cleanMessageContent } from './store';
 export type { GatewayState, GatewayActions, GatewayStore } from './store';

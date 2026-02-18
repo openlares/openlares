@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { shouldDisplayMessage, cleanSessionName, gatewayStore } from '../store';
+import { shouldDisplayMessage, cleanSessionName, cleanMessageContent, gatewayStore } from '../store';
 import type { ChatMessage } from '@openlares/core';
 import type { SessionSummary } from '../protocol';
 
@@ -86,6 +86,27 @@ describe('shouldDisplayMessage', () => {
     expect(shouldDisplayMessage(msg('assistant', 'NO_REPLY'))).toBe(false);
   });
 
+
+
+  it('filters tool role messages', () => {
+    expect(shouldDisplayMessage(msg('tool', '{"result": "some data"}'))).toBe(false);
+  });
+
+  it('filters assistant messages that are pure JSON objects', () => {
+    expect(shouldDisplayMessage(msg('assistant', '{"id": "123", "status": "ok", "data": [1,2,3]}'))).toBe(false);
+  });
+
+  it('filters assistant messages that are JSON arrays', () => {
+    expect(shouldDisplayMessage(msg('assistant', '[{"key": "value"}, {"key2": "value2"}]'))).toBe(false);
+  });
+
+  it('keeps assistant messages that look like JSON but are not', () => {
+    expect(shouldDisplayMessage(msg('assistant', '{this is not json, just curly braces}'))).toBe(true);
+  });
+
+  it('keeps assistant messages with normal text', () => {
+    expect(shouldDisplayMessage(msg('assistant', 'Here is your answer: the result is 42.'))).toBe(true);
+  });
   it('filters metadata-only user messages (no real content after stripping)', () => {
     const content = [
       'Conversation info (untrusted metadata):',
@@ -189,5 +210,38 @@ describe('gatewayStore.selectSession', () => {
   it('updates activeSessionKey', () => {
     gatewayStore.getState().selectSession('session-b');
     expect(gatewayStore.getState().activeSessionKey).toBe('session-b');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cleanMessageContent
+// ---------------------------------------------------------------------------
+
+describe('cleanMessageContent', () => {
+  it('strips [Tool: ...] lines', () => {
+    const input = 'Starting task\n[Tool: exec]\nCommand ran\n[Tool: read]\nFile contents';
+    const result = cleanMessageContent(input);
+    expect(result).toBe('Starting task\nCommand ran\nFile contents');
+  });
+
+  it('strips [Tool Result] lines', () => {
+    const input = 'Checking...\n[Tool Result]\nDone';
+    const result = cleanMessageContent(input);
+    expect(result).toBe('Checking...\nDone');
+  });
+
+  it('strips Anthropic-format tool markers', () => {
+    const input = 'Text\n[tool_use: exec]\n[tool_result: success]\nMore text';
+    const result = cleanMessageContent(input);
+    expect(result).toBe('Text\nMore text');
+  });
+
+  it('preserves normal content', () => {
+    const input = 'Hello world\nThis is a normal message';
+    expect(cleanMessageContent(input)).toBe(input);
+  });
+
+  it('handles empty input', () => {
+    expect(cleanMessageContent('')).toBe('');
   });
 });
