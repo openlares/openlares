@@ -102,9 +102,10 @@ function MessageItem({ message }: { message: ChatMessage }) {
   const strippedContent = isUser ? stripMetadataEnvelope(rawContent) : rawContent;
 
   // Truncate very long messages to prevent browser freeze
-  const displayContent = strippedContent.length > MAX_DISPLAY_LENGTH
-    ? strippedContent.slice(0, MAX_DISPLAY_LENGTH) + TRUNCATION_NOTICE
-    : strippedContent;
+  const displayContent =
+    strippedContent.length > MAX_DISPLAY_LENGTH
+      ? strippedContent.slice(0, MAX_DISPLAY_LENGTH) + TRUNCATION_NOTICE
+      : strippedContent;
 
   return (
     <div className={`px-4 py-4 overflow-hidden ${isUser ? 'rounded-lg bg-gray-800' : ''}`}>
@@ -192,7 +193,15 @@ function LoadingMoreIndicator() {
  * (auto-scroll to new messages). The parent must provide a definite
  * height (e.g. via flex layout).
  */
-export function Chat({ messages, isStreaming, isConnected, onSendMessage, onLoadMore, isLoadingMore, hasMore }: ChatProps) {
+export function Chat({
+  messages,
+  isStreaming,
+  isConnected,
+  onSendMessage,
+  onLoadMore,
+  isLoadingMore,
+  hasMore,
+}: ChatProps) {
   const [input, setInput] = useState('');
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -254,8 +263,9 @@ export function Chat({ messages, isStreaming, isConnected, onSendMessage, onLoad
             itemContent={(index, msg) => <MessageItem message={msg} />}
             components={{
               Header: () =>
-                isLoadingMore ? <LoadingMoreIndicator /> :
-                hasMore === false ? (
+                isLoadingMore ? (
+                  <LoadingMoreIndicator />
+                ) : hasMore === false ? (
                   <div className="flex items-center justify-center py-2">
                     <span className="text-xs text-gray-600">Beginning of conversation</span>
                   </div>

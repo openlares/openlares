@@ -4,7 +4,12 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { shouldDisplayMessage, cleanSessionName, cleanMessageContent, gatewayStore } from '../store';
+import {
+  shouldDisplayMessage,
+  cleanSessionName,
+  cleanMessageContent,
+  gatewayStore,
+} from '../store';
 import type { ChatMessage } from '@openlares/core';
 import type { SessionSummary } from '../protocol';
 
@@ -86,26 +91,32 @@ describe('shouldDisplayMessage', () => {
     expect(shouldDisplayMessage(msg('assistant', 'NO_REPLY'))).toBe(false);
   });
 
-
-
   it('filters tool role messages', () => {
     expect(shouldDisplayMessage(msg('tool', '{"result": "some data"}'))).toBe(false);
   });
 
   it('filters assistant messages that are pure JSON objects', () => {
-    expect(shouldDisplayMessage(msg('assistant', '{"id": "123", "status": "ok", "data": [1,2,3]}'))).toBe(false);
+    expect(
+      shouldDisplayMessage(msg('assistant', '{"id": "123", "status": "ok", "data": [1,2,3]}')),
+    ).toBe(false);
   });
 
   it('filters assistant messages that are JSON arrays', () => {
-    expect(shouldDisplayMessage(msg('assistant', '[{"key": "value"}, {"key2": "value2"}]'))).toBe(false);
+    expect(shouldDisplayMessage(msg('assistant', '[{"key": "value"}, {"key2": "value2"}]'))).toBe(
+      false,
+    );
   });
 
   it('keeps assistant messages that look like JSON but are not', () => {
-    expect(shouldDisplayMessage(msg('assistant', '{this is not json, just curly braces}'))).toBe(true);
+    expect(shouldDisplayMessage(msg('assistant', '{this is not json, just curly braces}'))).toBe(
+      true,
+    );
   });
 
   it('keeps assistant messages with normal text', () => {
-    expect(shouldDisplayMessage(msg('assistant', 'Here is your answer: the result is 42.'))).toBe(true);
+    expect(shouldDisplayMessage(msg('assistant', 'Here is your answer: the result is 42.'))).toBe(
+      true,
+    );
   });
   it('filters metadata-only user messages (no real content after stripping)', () => {
     const content = [
@@ -140,13 +151,17 @@ function session(key: string, title?: string): SessionSummary {
 
 describe('cleanSessionName', () => {
   it('extracts Discord channel name from session key', () => {
-    expect(cleanSessionName(session('agent:main:discord:channel:123', 'Discord thread #research > earn'))).toBe(
-      'Discord thread #research > earn',
-    );
+    expect(
+      cleanSessionName(
+        session('agent:main:discord:channel:123', 'Discord thread #research > earn'),
+      ),
+    ).toBe('Discord thread #research > earn');
   });
 
   it('extracts channel name after hash', () => {
-    expect(cleanSessionName(session('agent:main:discord:channel:123', '#openlares'))).toBe('#openlares');
+    expect(cleanSessionName(session('agent:main:discord:channel:123', '#openlares'))).toBe(
+      '#openlares',
+    );
   });
 
   it('uses title when available', () => {
@@ -158,11 +173,15 @@ describe('cleanSessionName', () => {
   });
 
   it('cleans cron job prefix', () => {
-    expect(cleanSessionName(session('cron-123', 'Cron: Daily Email Check'))).toBe('Daily Email Check');
+    expect(cleanSessionName(session('cron-123', 'Cron: Daily Email Check'))).toBe(
+      'Daily Email Check',
+    );
   });
 
   it('adds robot emoji for subagent sessions', () => {
-    expect(cleanSessionName(session('subagent:task-123', 'Research Task'))).toBe('\uD83E\uDD16 Research Task');
+    expect(cleanSessionName(session('subagent:task-123', 'Research Task'))).toBe(
+      '\uD83E\uDD16 Research Task',
+    );
   });
 
   it('handles main discord session', () => {
@@ -206,8 +225,6 @@ describe('gatewayStore.selectSession', () => {
     gatewayStore.getState().selectSession('session-b');
     expect(gatewayStore.getState().showChat).toBe(true);
   });
-
-
 
   it('resets pagination state when switching sessions', () => {
     gatewayStore.setState({ hasMoreHistory: false, historyLoading: true, historyLimit: 100 });

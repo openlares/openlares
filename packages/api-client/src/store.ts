@@ -238,7 +238,16 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   },
 
   selectSession: (sessionKey) => {
-    set({ activeSessionKey: sessionKey, messages: [], activityItems: [], isStreaming: false, showChat: true, hasMoreHistory: true, historyLoading: false, historyLimit: 20 });
+    set({
+      activeSessionKey: sessionKey,
+      messages: [],
+      activityItems: [],
+      isStreaming: false,
+      showChat: true,
+      hasMoreHistory: true,
+      historyLoading: false,
+      historyLimit: 20,
+    });
     get()
       .loadHistory(sessionKey)
       .catch(() => {
@@ -293,9 +302,10 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
       .filter(shouldDisplayMessage)
       .map((m) => ({
         ...m,
-        content: m.role === 'user'
-          ? stripMetadataEnvelope(m.content as string)
-          : cleanMessageContent(m.content as string),
+        content:
+          m.role === 'user'
+            ? stripMetadataEnvelope(m.content as string)
+            : cleanMessageContent(m.content as string),
       }))
       .filter((m) => (m.content as string).trim().length > 0);
     set({
@@ -402,8 +412,10 @@ function isMachineData(content: string): boolean {
   const trimmed = content.trim();
 
   // Pure JSON object or array
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-      (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
     try {
       JSON.parse(trimmed);
       return true;
