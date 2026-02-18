@@ -227,7 +227,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   },
 
   selectSession: (sessionKey) => {
-    set({ activeSessionKey: sessionKey, messages: [], activityItems: [], showChat: true });
+    set({ activeSessionKey: sessionKey, messages: [], activityItems: [], isStreaming: false, showChat: true });
     get()
       .loadHistory(sessionKey)
       .catch(() => {
@@ -301,6 +301,32 @@ type StoreSetter = (
 // ---------------------------------------------------------------------------
 
 /**
+ * Strip OpenClaw metadata envelope from user messages.
+ * Gateway stores Discord messages with conversation/sender metadata prepended.
+ */
+function stripMetadataEnvelope(content: string): string {
+  // Match optional Conversation info block, optional Sender block, then capture the rest
+  const parts: string[] = [];
+  let remaining = content;
+
+  // Try to strip "Conversation info" block
+  const convPattern = /^Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/;
+  const convMatch = remaining.match(convPattern);
+  if (convMatch) {
+    remaining = remaining.slice(convMatch[0].length);
+  }
+
+  // Try to strip "Sender" block
+  const senderPattern = /^Sender \(untrusted metadata\):\s*```json[\s\S]*?```\s*/;
+  const senderMatch = remaining.match(senderPattern);
+  if (senderMatch) {
+    remaining = remaining.slice(senderMatch[0].length);
+  }
+
+  return remaining.trim();
+}
+
+/**
  * Filter out system noise from chat messages.
  *
  * Removes heartbeat prompts, system events, tool call metadata, and other
@@ -322,8 +348,9 @@ export function shouldDisplayMessage(message: ChatMessage): boolean {
     if (content.includes('Read HEARTBEAT.md') || content.includes('HEARTBEAT_OK')) {
       return false;
     }
-    // Skip metadata envelope messages
-    if (content.startsWith('Conversation info (untrusted metadata)')) {
+    // Strip metadata envelope, then check if there's actual user content
+    const stripped = stripMetadataEnvelope(content);
+    if (!stripped || stripped.length === 0) {
       return false;
     }
   }
@@ -362,6 +389,10 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
   // Chat streaming events
   client.on('chat', (raw) => {
     const payload = raw as ChatEventPayload;
+
+    // Only process events for the currently viewed session
+    const { activeSessionKey } = gatewayStore.getState();
+    if (payload.sessionKey !== activeSessionKey) return;
 
     if (payload.state === 'delta' && payload.message) {
       // Append delta text to the last assistant message, or create one

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Sidebar } from '@/components/sidebar';
 import { GatewayProvider } from '@/providers/gateway-provider';
-import { ConditionalChatPanel } from '@/components/conditional-chat-panel';
+import { ResizableLayout } from '@/components/resizable-layout';
 
 export const metadata: Metadata = {
   title: 'OpenLares',
@@ -16,8 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <GatewayProvider>
           <div className="flex h-screen overflow-hidden">
             <Sidebar />
-            <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
-            <ConditionalChatPanel />
+            <ResizableLayout>{children}</ResizableLayout>
           </div>
         </GatewayProvider>
       </body>

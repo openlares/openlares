@@ -17,7 +17,7 @@ export function ChatPanel() {
   const sessionDisplayName = activeSession ? cleanSessionName(activeSession) : 'Chat';
 
   return (
-    <aside className="h-screen w-96 border-l border-gray-800 flex flex-col">
+    <div className="h-full flex flex-col border-l border-gray-800">
       {/* Header with session name and close button */}
       <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
         <h2 className="text-sm font-medium text-gray-200">{sessionDisplayName}</h2>
@@ -46,6 +46,6 @@ export function ChatPanel() {
           onSendMessage={(text) => void sendMessage(text)}
         />
       </div>
-    </aside>
+    </div>
   );
 }
