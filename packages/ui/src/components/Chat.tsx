@@ -5,6 +5,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '@openlares/core';
+import { stripMetadataEnvelope } from '@openlares/core';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,20 +64,7 @@ function TypingIndicator() {
   );
 }
 
-/**
- * Strip OpenClaw metadata envelope from user messages.
- */
-function stripMetadataEnvelope(content: string): string {
-  const metadataPattern =
-    /^(Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*)?(Sender \(untrusted metadata\):\s*```json[\s\S]*?```\s*)?([\s\S]*)$/;
-
-  const match = content.match(metadataPattern);
-  if (match && match[3]) {
-    return match[3].trim();
-  }
-
-  return content;
-}
+// stripMetadataEnvelope imported from @openlares/api-client
 
 /**
  * Safely extract displayable text from message content.
@@ -205,6 +193,14 @@ export function Chat({
   const [input, setInput] = useState('');
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [atBottom, setAtBottom] = useState(true);
+
+  const scrollToBottom = useCallback(() => {
+    virtuosoRef.current?.scrollToIndex({
+      index: messages.length - 1,
+      behavior: 'smooth',
+    });
+  }, [messages.length]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -253,6 +249,7 @@ export function Chat({
             ref={virtuosoRef}
             data={messages}
             followOutput="smooth"
+            atBottomStateChange={setAtBottom}
             initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
             className="[&>div]:overflow-x-hidden"
             startReached={() => {
@@ -278,6 +275,18 @@ export function Chat({
           />
         )}
       </div>
+
+      {/* Scroll to latest button */}
+      {!atBottom && messages.length > 0 && (
+        <div className="flex justify-center py-1">
+          <button
+            onClick={scrollToBottom}
+            className="rounded-full bg-gray-800 border border-gray-700 px-3 py-1 text-xs text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors shadow-lg"
+          >
+            ↓ Latest
+          </button>
+        </div>
+      )}
 
       {/* Input bar — pinned to bottom */}
       <div className="shrink-0 border-t border-gray-800 bg-gray-900 p-3">
