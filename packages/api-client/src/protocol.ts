@@ -81,6 +81,13 @@ export interface ConnectParams {
   role: string;
   scopes: string[];
   auth: { token: string };
+  device?: {
+    id: string;
+    publicKey: string;
+    signature: string;
+    signedAt: number;
+    nonce?: string;
+  };
   locale: string;
   userAgent: string;
 }
