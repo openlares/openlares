@@ -15,6 +15,8 @@
  */
 
 import type { ConnectionStatus } from '@openlares/core';
+import { getDeviceIdentity, signConnectChallenge } from './device-identity';
+import type { DeviceIdentity } from './device-identity';
 import type {
   ConnectChallengePayload,
   ConnectParams,
@@ -108,6 +110,12 @@ export class GatewayClient {
   private shouldReconnect = false;
 
   // Handshake state
+  // Handshake state
+  private connectNonce: string | undefined;
+
+  // Device identity for gateway auth
+  private deviceIdentity: DeviceIdentity | null = null;
+
   private connectResolve: ((hello: HelloOkPayload) => void) | null = null;
   private connectReject: ((err: Error) => void) | null = null;
 
@@ -318,18 +326,42 @@ export class GatewayClient {
   // Internals — handshake
   // -----------------------------------------------------------------------
 
-  private sendConnectRequest(_challenge: ConnectChallengePayload): void {
+  private async sendConnectRequest(challenge: ConnectChallengePayload): Promise<void> {
+    // Store nonce for signing
+    this.connectNonce = challenge.nonce;
+
+    // Ensure we have a device identity
+    if (!this.deviceIdentity) {
+      this.deviceIdentity = await getDeviceIdentity();
+    }
+
+    const clientId = 'openclaw-control-ui';
+    const clientMode = 'webchat';
+    const role = 'operator';
+    const scopes = ['operator.read', 'operator.write'];
+
+    // Sign the connect challenge with our device identity
+    const device = await signConnectChallenge(this.deviceIdentity, {
+      clientId,
+      clientMode,
+      role,
+      scopes,
+      token: this.token,
+      nonce: challenge.nonce,
+    });
+
     const params: ConnectParams = {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: 'openclaw-control-ui',
+        id: clientId,
         version: '0.0.0',
         platform: 'web',
-        mode: 'ui',
+        mode: clientMode,
       },
-      role: 'operator',
-      scopes: ['operator.read', 'operator.write'],
+      role,
+      scopes,
+      device,
       auth: { token: this.token },
       locale: typeof navigator !== 'undefined' ? navigator.language : 'en',
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'openlares',

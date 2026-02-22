@@ -13,6 +13,22 @@ import {
   GatewayClient,
 } from '../gateway-client';
 
+// Mock device identity to avoid crypto in tests
+vi.mock('../device-identity', () => ({
+  getDeviceIdentity: vi.fn().mockResolvedValue({
+    deviceId: 'test-device-id',
+    publicKey: 'dGVzdC1wdWJsaWMta2V5',
+    privateKey: 'dGVzdC1wcml2YXRlLWtleQ',
+  }),
+  signConnectChallenge: vi.fn().mockResolvedValue({
+    id: 'test-device-id',
+    publicKey: 'dGVzdC1wdWJsaWMta2V5',
+    signature: 'dGVzdC1zaWduYXR1cmU',
+    signedAt: 1234567890,
+    nonce: 'abc',
+  }),
+}));
+
 // ---------------------------------------------------------------------------
 // Mock WebSocket
 // ---------------------------------------------------------------------------
@@ -217,7 +233,8 @@ describe('GatewayClient state transitions', () => {
     });
 
     // Client should have sent a connect request
-    expect(ws.sentMessages.length).toBe(1);
+    // Wait for async sendConnectRequest to complete
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBe(1));
     const req = JSON.parse(ws.sentMessages[0]!) as { id: string };
 
     // Server responds with hello-ok
@@ -268,6 +285,7 @@ describe('GatewayClient request timeout', () => {
       payload: { nonce: 'n', ts: 1 },
     });
 
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThanOrEqual(1));
     const req = JSON.parse(ws.sentMessages[0]!) as { id: string };
     ws.simulateMessage({
       type: 'res',
@@ -314,6 +332,7 @@ describe('GatewayClient event subscriptions', () => {
       event: 'connect.challenge',
       payload: { nonce: 'n', ts: 1 },
     });
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThanOrEqual(1));
     const req = JSON.parse(ws.sentMessages[0]!) as { id: string };
     ws.simulateMessage({
       type: 'res',
@@ -358,6 +377,7 @@ describe('GatewayClient event subscriptions', () => {
       event: 'connect.challenge',
       payload: { nonce: 'n', ts: 1 },
     });
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThanOrEqual(1));
     const req = JSON.parse(ws.sentMessages[0]!) as { id: string };
     ws.simulateMessage({
       type: 'res',
