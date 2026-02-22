@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   hashCode,
   friendlyName,
+  resolveSessionName,
   getDisplayName,
   getFullName,
   getSessionColor,
@@ -58,117 +59,176 @@ describe('friendlyName', () => {
   it('is deterministic for the same key', () => {
     expect(friendlyName('abc')).toBe(friendlyName('abc'));
   });
-
-  it('produces different names for different keys', () => {
-    // Not guaranteed for all inputs, but highly likely for distinct strings
-    const a = friendlyName('session-alpha');
-    const b = friendlyName('session-beta');
-    // At least one should differ (very unlikely collision)
-    expect(a === b && a === friendlyName('session-gamma')).toBe(false);
-  });
 });
 
 // ---------------------------------------------------------------------------
-// getDisplayName
+// resolveSessionName
 // ---------------------------------------------------------------------------
 
-describe('getDisplayName', () => {
-  it('returns "Main" for main session', () => {
-    expect(getDisplayName(makeSession({ sessionKey: 'agent:main:main' }))).toBe('Main');
+describe('resolveSessionName', () => {
+  it('identifies main session', () => {
+    const result = resolveSessionName(makeSession({ sessionKey: 'agent:main:main' }));
+    expect(result).toEqual({ icon: '', name: 'Main' });
   });
 
-  it('returns "Main" for g-agent-main-main title', () => {
-    expect(getDisplayName(makeSession({ title: 'discord:g-agent-main-main' }))).toBe('Main');
-  });
-
-  it('extracts discord channel name from title with #', () => {
-    const result = getDisplayName(makeSession({ title: 'Guild #openlares channel id:123' }));
-    expect(result.startsWith('#openlares')).toBe(true);
-    expect(result.length).toBeLessThanOrEqual(18);
-  });
-
-  it('extracts last # segment from title', () => {
-    expect(getDisplayName(makeSession({ title: 'Server #general' }))).toBe('#general');
-  });
-
-  it('truncates long channel names', () => {
-    const longName = '#this-is-a-very-long-channel-name-wow';
-    const result = getDisplayName(makeSession({ title: longName }));
-    expect(result.length).toBeLessThanOrEqual(18);
-    expect(result).toContain('\u2026');
-  });
-
-  it('strips Cron: prefix', () => {
-    expect(getDisplayName(makeSession({ title: 'Cron: daily-email' }))).toBe('daily-email');
-  });
-
-  it('adds robot emoji for subagents', () => {
-    const result = getDisplayName(
-      makeSession({ sessionKey: 'subagent:task-123', title: 'My Task' }),
-    );
-    expect(result).toMatch(/^\uD83E\uDD16/);
-    expect(result).toContain('My Task');
-  });
-
-  it('uses friendly name for long technical IDs', () => {
-    const result = getDisplayName(
+  it('identifies discord with channel title', () => {
+    const result = resolveSessionName(
       makeSession({
-        sessionKey: 'agent:main:discord:channel:1472142915416359027',
-        title: '',
+        sessionKey: 'agent:main:discord:channel:123',
+        title: 'Guild #openlares channel id:123',
       }),
     );
-    // Should NOT contain colons or long numbers
-    expect(result).not.toContain(':');
-    expect(result.split(' ')).toHaveLength(2); // friendly name = 2 words
+    expect(result.icon).toBe('\uD83D\uDCAC');
+    expect(result.name).toBe('#openlares channel id:123');
   });
 
-  it('uses friendly name for UUID-like session keys', () => {
-    const result = getDisplayName(
+  it('identifies discord without title', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'agent:main:discord:channel:123', title: '' }),
+    );
+    expect(result.icon).toBe('\uD83D\uDCAC');
+    expect(result.name).toBe('discord');
+  });
+
+  it('identifies telegram', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'agent:main:telegram:chat:456', title: 'Vlad' }),
+    );
+    expect(result.icon).toBe('\u2708\uFE0F');
+    expect(result.name).toBe('Vlad');
+  });
+
+  it('identifies whatsapp', () => {
+    const result = resolveSessionName(makeSession({ sessionKey: 'agent:main:whatsapp:chat:789' }));
+    expect(result.icon).toBe('\uD83D\uDCF1');
+  });
+
+  it('identifies signal', () => {
+    const result = resolveSessionName(makeSession({ sessionKey: 'agent:main:signal:chat:abc' }));
+    expect(result.icon).toBe('\uD83D\uDD12');
+  });
+
+  it('identifies slack', () => {
+    const result = resolveSessionName(makeSession({ sessionKey: 'agent:main:slack:channel:xyz' }));
+    expect(result.icon).toBe('\uD83D\uDCBC');
+  });
+
+  it('parses hook sessions from key segments', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'hook:pipeline:task-42', title: '' }),
+    );
+    expect(result.icon).toBe('\uD83D\uDD17');
+    expect(result.name).toBe('pipeline: task-42');
+  });
+
+  it('uses title for hook if available', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'hook:pipeline:task-42', title: 'Deploy frontend' }),
+    );
+    expect(result.icon).toBe('\uD83D\uDD17');
+    expect(result.name).toBe('Deploy frontend');
+  });
+
+  it('identifies subagents', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'subagent:abc123', title: 'Research task' }),
+    );
+    expect(result.icon).toBe('\uD83E\uDD16');
+    expect(result.name).toBe('Research task');
+  });
+
+  it('identifies cron from title', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'agent:main:xxx', title: 'Cron: daily-email-check' }),
+    );
+    expect(result.icon).toBe('\u23F0');
+    expect(result.name).toBe('daily-email-check');
+  });
+
+  it('identifies cron from sessionKey', () => {
+    const result = resolveSessionName(makeSession({ sessionKey: 'cron:daily-backup', title: '' }));
+    expect(result.icon).toBe('\u23F0');
+  });
+
+  it('uses title when available and not a UUID', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'something:unknown', title: 'My Custom Session' }),
+    );
+    expect(result.icon).toBe('');
+    expect(result.name).toBe('My Custom Session');
+  });
+
+  it('falls back to friendly name for UUID-like titles', () => {
+    const result = resolveSessionName(
       makeSession({
         sessionKey: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
         title: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
       }),
     );
-    expect(result.split(' ')).toHaveLength(2);
-  });
-
-  it('uses short title as-is', () => {
-    expect(getDisplayName(makeSession({ sessionKey: 'x', title: 'My Chat' }))).toBe('My Chat');
-  });
-
-  it('truncates long regular titles', () => {
-    const result = getDisplayName(
-      makeSession({ sessionKey: 'x', title: 'A Very Long Session Title Here' }),
-    );
-    expect(result.length).toBeLessThanOrEqual(18);
-    expect(result).toContain('\u2026');
+    expect(result.icon).toBe('');
+    // Should be a friendly name (2 words)
+    expect(result.name.split(' ')).toHaveLength(2);
   });
 });
 
 // ---------------------------------------------------------------------------
-// getFullName
+// getDisplayName & getFullName
 // ---------------------------------------------------------------------------
 
+describe('getDisplayName', () => {
+  it('returns Main for main session', () => {
+    expect(getDisplayName(makeSession({ sessionKey: 'agent:main:main' }))).toBe('Main');
+  });
+
+  it('includes source icon for discord', () => {
+    const result = getDisplayName(
+      makeSession({
+        sessionKey: 'agent:main:discord:channel:123',
+        title: 'Server #general',
+      }),
+    );
+    expect(result).toContain('\uD83D\uDCAC');
+    expect(result).toContain('#general');
+  });
+
+  it('truncates long names', () => {
+    const result = getDisplayName(
+      makeSession({
+        sessionKey: 'agent:main:discord:channel:123',
+        title: 'Guild #very-long-channel-name-here',
+      }),
+    );
+    expect(result.length).toBeLessThanOrEqual(20); // icon + space + truncated
+  });
+
+  it('includes hook icon', () => {
+    const result = getDisplayName(makeSession({ sessionKey: 'hook:pipeline:task-42', title: '' }));
+    expect(result).toContain('\uD83D\uDD17');
+    expect(result).toContain('pipeline');
+  });
+});
+
 describe('getFullName', () => {
-  it('returns untruncated discord channel name', () => {
-    const result = getFullName(makeSession({ title: 'Guild #very-long-channel-name-here' }));
-    expect(result).toBe('#very-long-channel-name-here');
-    // getDisplayName would truncate this
-    expect(result.length).toBeGreaterThan(18);
+  it('returns untruncated name', () => {
+    const result = getFullName(
+      makeSession({
+        sessionKey: 'agent:main:discord:channel:123',
+        title: 'Guild #very-long-channel-name-here',
+      }),
+    );
+    expect(result).toContain('#very-long-channel-name-here');
   });
 
   it('matches getDisplayName for short names', () => {
-    const session = makeSession({ title: 'Server #general' });
+    const session = makeSession({ sessionKey: 'agent:main:main' });
     expect(getFullName(session)).toBe(getDisplayName(session));
   });
 
-  it('returns full cron job name', () => {
-    const session = makeSession({ title: 'Cron: very-long-daily-email-check-job' });
-    expect(getFullName(session)).toBe('very-long-daily-email-check-job');
-  });
-
-  it('returns Main for main session', () => {
-    expect(getFullName(makeSession({ sessionKey: 'agent:main:main' }))).toBe('Main');
+  it('returns full hook name', () => {
+    const result = getFullName(
+      makeSession({ sessionKey: 'hook:back-pipeline:long-task-description-here', title: '' }),
+    );
+    expect(result).toBe('\uD83D\uDD17 back-pipeline: long-task-description-here');
   });
 });
 

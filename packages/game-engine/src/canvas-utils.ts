@@ -29,7 +29,7 @@ export function hashCode(s: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Friendly name generation
+// Friendly name generation (last resort)
 // ---------------------------------------------------------------------------
 
 const ADJECTIVES = [
@@ -73,6 +73,7 @@ const NOUNS = [
 /**
  * Deterministic friendly name from a session key.
  * Same key always maps to the same name (e.g. "swift fox").
+ * Used only as a last resort when no structured info is available.
  */
 export function friendlyName(sessionKey: string): string {
   const h = hashCode(sessionKey);
@@ -82,7 +83,103 @@ export function friendlyName(sessionKey: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Display name
+// Session name resolution
+// ---------------------------------------------------------------------------
+
+interface ResolvedName {
+  /** Emoji prefix indicating the session source. Empty for main/unknown. */
+  icon: string;
+  /** Human-readable session name (untruncated). */
+  name: string;
+}
+
+/**
+ * Resolve a session into an icon + human-readable name.
+ *
+ * Parses the sessionKey structure (universal across all OpenClaw instances)
+ * and falls back to the title, then to a friendly word pair.
+ *
+ * Session key patterns:
+ *   agent:{name}:{source}:{type}:{id}   (channel sessions)
+ *   hook:{name}:{id}                     (webhook/hook sessions)
+ *   subagent:{...}                       (spawned sub-agents)
+ *   agent:{name}:main                    (main session)
+ */
+export function resolveSessionName(session: SessionSummary): ResolvedName {
+  const { sessionKey, title } = session;
+  const raw = title || sessionKey;
+
+  // ---- Main session ----
+  if (sessionKey.endsWith(':main') || raw.includes('g-agent-main-main')) {
+    return { icon: '', name: 'Main' };
+  }
+
+  // ---- Channel sources (detected from sessionKey) ----
+  if (sessionKey.includes(':discord:')) {
+    const ch = raw.match(/#([^#]+)$/);
+    return { icon: '\uD83D\uDCAC', name: ch ? `#${ch[1]}` : title || 'discord' };
+  }
+
+  if (sessionKey.includes(':telegram:')) {
+    return { icon: '\u2708\uFE0F', name: title || 'telegram' };
+  }
+
+  if (sessionKey.includes(':whatsapp:')) {
+    return { icon: '\uD83D\uDCF1', name: title || 'whatsapp' };
+  }
+
+  if (sessionKey.includes(':signal:')) {
+    return { icon: '\uD83D\uDD12', name: title || 'signal' };
+  }
+
+  if (sessionKey.includes(':slack:')) {
+    return { icon: '\uD83D\uDCBC', name: title || 'slack' };
+  }
+
+  if (sessionKey.includes(':irc:')) {
+    return { icon: '\uD83D\uDCE1', name: title || 'irc' };
+  }
+
+  if (sessionKey.includes(':imessage:')) {
+    return { icon: '\uD83D\uDCE8', name: title || 'iMessage' };
+  }
+
+  if (sessionKey.includes(':googlechat:')) {
+    return { icon: '\uD83D\uDDE8\uFE0F', name: title || 'google chat' };
+  }
+
+  // ---- Hook sessions ----
+  if (sessionKey.startsWith('hook:')) {
+    // hook:pipeline:task-42 -> "pipeline: task-42"
+    const parts = sessionKey.split(':').slice(1);
+    const hookLabel = parts.join(': ');
+    return { icon: '\uD83D\uDD17', name: title || hookLabel || 'hook' };
+  }
+
+  // ---- Sub-agents ----
+  if (sessionKey.includes('subagent')) {
+    return { icon: '\uD83E\uDD16', name: title || friendlyName(sessionKey) };
+  }
+
+  // ---- Cron jobs ----
+  if (raw.startsWith('Cron: ')) {
+    return { icon: '\u23F0', name: raw.substring(6) };
+  }
+  if (sessionKey.includes('cron')) {
+    return { icon: '\u23F0', name: title || 'cron' };
+  }
+
+  // ---- Title available and reasonable ----
+  if (title && title.length > 0 && !/^[a-f0-9-]{20,}$/i.test(title)) {
+    return { icon: '', name: title };
+  }
+
+  // ---- Last resort: friendly word pair ----
+  return { icon: '', name: friendlyName(sessionKey) };
+}
+
+// ---------------------------------------------------------------------------
+// Display name (truncated for canvas labels)
 // ---------------------------------------------------------------------------
 
 /** Maximum display name length for canvas labels. */
@@ -93,79 +190,22 @@ function truncate(s: string, max: number): string {
 }
 
 /**
- * Produce a short, human-readable display name for a session.
- *
- * Priority:
- * 1. Recognisable patterns (main, discord channels, cron jobs, subagents)
- * 2. Title if short enough
- * 3. Deterministic friendly name as fallback for technical IDs
+ * Short display name for canvas avatar labels.
+ * Truncated to fit above the circle.
  */
-/**
- * Full (untruncated) display name for tooltips.
- * Same logic as getDisplayName but without truncation.
- */
-export function getFullName(session: SessionSummary): string {
-  const { sessionKey, title } = session;
-  const raw = title || sessionKey;
-
-  if (sessionKey.endsWith(':main') || raw.includes('g-agent-main-main')) return 'Main';
-
-  const channelMatch = raw.match(/#([^#]+)$/);
-  if (channelMatch) return `#${channelMatch[1]}`;
-
-  if (raw.startsWith('Cron: ')) return raw.substring(6);
-
-  if (sessionKey.includes('subagent')) {
-    return `\uD83E\uDD16 ${title || friendlyName(sessionKey)}`;
-  }
-
-  if (
-    /^[a-f0-9-]{20,}$/i.test(raw) ||
-    raw.startsWith('agent:') ||
-    (raw.length > 25 && raw.includes(':'))
-  ) {
-    return friendlyName(sessionKey);
-  }
-
-  return raw;
+export function getDisplayName(session: SessionSummary): string {
+  const { icon, name } = resolveSessionName(session);
+  if (!icon) return truncate(name, MAX_NAME_LENGTH);
+  // Reserve space for icon + space
+  return `${icon} ${truncate(name, MAX_NAME_LENGTH - 3)}`;
 }
 
-export function getDisplayName(session: SessionSummary): string {
-  const { sessionKey, title } = session;
-  const raw = title || sessionKey;
-
-  // Main session
-  if (sessionKey.endsWith(':main') || raw.includes('g-agent-main-main')) {
-    return 'Main';
-  }
-
-  // Discord channels: extract #channel-name
-  const channelMatch = raw.match(/#([^#]+)$/);
-  if (channelMatch) {
-    return truncate(`#${channelMatch[1]}`, MAX_NAME_LENGTH);
-  }
-
-  // Cron jobs
-  if (raw.startsWith('Cron: ')) {
-    return truncate(raw.substring(6), MAX_NAME_LENGTH);
-  }
-
-  // Subagents
-  if (sessionKey.includes('subagent')) {
-    const label = title || friendlyName(sessionKey);
-    return `\uD83E\uDD16 ${truncate(label, MAX_NAME_LENGTH - 3)}`;
-  }
-
-  // Technical IDs -> friendly name
-  if (
-    /^[a-f0-9-]{20,}$/i.test(raw) ||
-    raw.startsWith('agent:') ||
-    (raw.length > 25 && raw.includes(':'))
-  ) {
-    return friendlyName(sessionKey);
-  }
-
-  return truncate(raw, MAX_NAME_LENGTH);
+/**
+ * Full (untruncated) display name for tooltips.
+ */
+export function getFullName(session: SessionSummary): string {
+  const { icon, name } = resolveSessionName(session);
+  return icon ? `${icon} ${name}` : name;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,9 +235,9 @@ export function getRecencyOpacity(session: SessionSummary, isSelected: boolean):
   const ageMs = Date.now() - session.updatedAt;
 
   if (ageMs < 5 * 60 * 1000) return 1.0; // <5 min: full
-  if (ageMs < 15 * 60 * 1000) return 0.85; // 5\u201315 min
-  if (ageMs < 30 * 60 * 1000) return 0.65; // 15\u201330 min
-  if (ageMs < ACTIVE_WINDOW_MS) return 0.4; // 30\u201360 min
+  if (ageMs < 15 * 60 * 1000) return 0.85; // 5-15 min
+  if (ageMs < 30 * 60 * 1000) return 0.65; // 15-30 min
+  if (ageMs < ACTIVE_WINDOW_MS) return 0.4; // 30-60 min
   return 0; // >1 hr: invisible
 }
 
