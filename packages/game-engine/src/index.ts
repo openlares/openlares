@@ -9,6 +9,7 @@ export { PixiCanvas } from './components/PixiCanvas';
 export type { SessionSummary } from './canvas-utils';
 export {
   getDisplayName,
+  getFullName,
   getSessionColor,
   getRecencyOpacity,
   isWithinActiveWindow,

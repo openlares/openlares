@@ -3,6 +3,7 @@ import {
   hashCode,
   friendlyName,
   getDisplayName,
+  getFullName,
   getSessionColor,
   getRecencyOpacity,
   isWithinActiveWindow,
@@ -141,6 +142,33 @@ describe('getDisplayName', () => {
     );
     expect(result.length).toBeLessThanOrEqual(18);
     expect(result).toContain('\u2026');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getFullName
+// ---------------------------------------------------------------------------
+
+describe('getFullName', () => {
+  it('returns untruncated discord channel name', () => {
+    const result = getFullName(makeSession({ title: 'Guild #very-long-channel-name-here' }));
+    expect(result).toBe('#very-long-channel-name-here');
+    // getDisplayName would truncate this
+    expect(result.length).toBeGreaterThan(18);
+  });
+
+  it('matches getDisplayName for short names', () => {
+    const session = makeSession({ title: 'Server #general' });
+    expect(getFullName(session)).toBe(getDisplayName(session));
+  });
+
+  it('returns full cron job name', () => {
+    const session = makeSession({ title: 'Cron: very-long-daily-email-check-job' });
+    expect(getFullName(session)).toBe('very-long-daily-email-check-job');
+  });
+
+  it('returns Main for main session', () => {
+    expect(getFullName(makeSession({ sessionKey: 'agent:main:main' }))).toBe('Main');
   });
 });
 

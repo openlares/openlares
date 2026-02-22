@@ -6,6 +6,7 @@ import { Application, Graphics, Text } from 'pixi.js';
 import type { SessionSummary } from '../canvas-utils';
 import {
   getDisplayName,
+  getFullName,
   getSessionColor,
   getRecencyOpacity,
   isWithinActiveWindow,
@@ -22,6 +23,8 @@ interface SessionAvatar {
   graphic: Graphics;
   text: Text;
   container: Graphics;
+  fullName: string;
+  isTruncated: boolean;
   x: number;
   y: number;
   radius: number;
@@ -54,17 +57,34 @@ interface PixiCanvasProps {
  *
  * Avatars fade over inactivity and disappear after 1 hour.
  * Labels are placed above circles for readability.
+ * Truncated names show a tooltip on hover.
  */
 export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const avatarsRef = useRef<SessionAvatar[]>([]);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    const tooltip = tooltipRef.current;
+    if (!container || !tooltip) return;
 
     let destroyed = false;
     const app = new Application();
+
+    function showTooltip(text: string, x: number, y: number) {
+      if (!tooltip) return;
+      tooltip.textContent = text;
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
+      tooltip.style.opacity = '1';
+      tooltip.style.pointerEvents = 'none';
+    }
+
+    function hideTooltip() {
+      if (!tooltip) return;
+      tooltip.style.opacity = '0';
+    }
 
     async function setup() {
       await app.init({
@@ -85,6 +105,7 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
         // Tear down previous avatars
         avatarsRef.current.forEach((av) => app.stage.removeChild(av.container));
         avatarsRef.current = [];
+        hideTooltip();
 
         // Keep only sessions inside the active window (+ always the selected one)
         const visible = sessions.filter(
@@ -107,6 +128,10 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           const opacity = getRecencyOpacity(session, isSelected);
           const color = getSessionColor(session.sessionKey);
           const radius = 35;
+
+          const displayName = getDisplayName(session);
+          const fullName = getFullName(session);
+          const isTruncated = displayName !== fullName;
 
           // Root container
           const avatarContainer = new Graphics();
@@ -138,9 +163,8 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           avatarContainer.addChild(circle);
 
           // ---- Label (above the circle) ----
-          const name = getDisplayName(session);
           const text = new Text({
-            text: name,
+            text: displayName,
             style: {
               fontSize: 11,
               fill: 0xffffff,
@@ -163,13 +187,27 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           avatarContainer.on('pointerdown', () => {
             onSessionClick(session.sessionKey);
           });
-          avatarContainer.on('pointerenter', () => {
+          avatarContainer.on('pointerenter', (e) => {
             const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
-            if (av) av.targetScale = 1.15;
+            if (av) {
+              av.targetScale = 1.15;
+              if (av.isTruncated) {
+                const gx = e.global.x;
+                const gy = e.global.y;
+                showTooltip(av.fullName, gx + 12, gy - 8);
+              }
+            }
+          });
+          avatarContainer.on('pointermove', (e) => {
+            const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
+            if (av && av.isTruncated) {
+              showTooltip(av.fullName, e.global.x + 12, e.global.y - 8);
+            }
           });
           avatarContainer.on('pointerleave', () => {
             const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
             if (av) av.targetScale = 1.0;
+            hideTooltip();
           });
 
           app.stage.addChild(avatarContainer);
@@ -179,6 +217,8 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             graphic: circle,
             text,
             container: avatarContainer,
+            fullName,
+            isTruncated,
             x: pos.x,
             y: pos.y,
             radius,
@@ -235,6 +275,7 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
 
     return () => {
       destroyed = true;
+      hideTooltip();
       try {
         app.destroy(true, { children: true });
       } catch {
@@ -248,6 +289,23 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
       ref={containerRef}
       className="h-full w-full"
       style={{ position: 'relative', overflow: 'hidden' }}
-    />
+    >
+      <div
+        ref={tooltipRef}
+        style={{
+          position: 'absolute',
+          opacity: 0,
+          transition: 'opacity 0.15s',
+          background: 'rgba(0, 0, 0, 0.85)',
+          color: '#fff',
+          fontSize: '12px',
+          padding: '4px 8px',
+          borderRadius: '4px',
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}
+      />
+    </div>
   );
 }

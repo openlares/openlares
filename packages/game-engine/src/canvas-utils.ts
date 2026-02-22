@@ -100,6 +100,36 @@ function truncate(s: string, max: number): string {
  * 2. Title if short enough
  * 3. Deterministic friendly name as fallback for technical IDs
  */
+/**
+ * Full (untruncated) display name for tooltips.
+ * Same logic as getDisplayName but without truncation.
+ */
+export function getFullName(session: SessionSummary): string {
+  const { sessionKey, title } = session;
+  const raw = title || sessionKey;
+
+  if (sessionKey.endsWith(':main') || raw.includes('g-agent-main-main')) return 'Main';
+
+  const channelMatch = raw.match(/#([^#]+)$/);
+  if (channelMatch) return `#${channelMatch[1]}`;
+
+  if (raw.startsWith('Cron: ')) return raw.substring(6);
+
+  if (sessionKey.includes('subagent')) {
+    return `\uD83E\uDD16 ${title || friendlyName(sessionKey)}`;
+  }
+
+  if (
+    /^[a-f0-9-]{20,}$/i.test(raw) ||
+    raw.startsWith('agent:') ||
+    (raw.length > 25 && raw.includes(':'))
+  ) {
+    return friendlyName(sessionKey);
+  }
+
+  return raw;
+}
+
 export function getDisplayName(session: SessionSummary): string {
   const { sessionKey, title } = session;
   const raw = title || sessionKey;
