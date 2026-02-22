@@ -48,6 +48,7 @@ export type { DeviceIdentity, DeviceSignature } from './device-identity';
 
 // Re-export core types consumers will need
 export type { ConnectionStatus, GatewayConfig } from '@openlares/core';
+export { stripMetadataEnvelope } from '@openlares/core';
 
 // React hook
 export { useGateway } from './use-gateway';
