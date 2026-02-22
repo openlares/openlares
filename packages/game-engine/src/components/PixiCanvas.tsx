@@ -187,28 +187,29 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           avatarContainer.on('pointerdown', () => {
             onSessionClick(session.sessionKey);
           });
-          avatarContainer.on('pointerenter', (e) => {
+          avatarContainer.on('pointerenter', () => {
             const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
-            if (av) {
-              av.targetScale = 1.15;
-              if (av.isTruncated) {
-                const gx = e.global.x;
-                const gy = e.global.y;
-                showTooltip(av.fullName, gx + 12, gy - 8);
-              }
-            }
-          });
-          avatarContainer.on('pointermove', (e) => {
-            const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
-            if (av && av.isTruncated) {
-              showTooltip(av.fullName, e.global.x + 12, e.global.y - 8);
-            }
+            if (av) av.targetScale = 1.15;
           });
           avatarContainer.on('pointerleave', () => {
             const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
             if (av) av.targetScale = 1.0;
-            hideTooltip();
           });
+
+          // Tooltip only on the label text (not the circle)
+          if (isTruncated) {
+            text.eventMode = 'static';
+            text.cursor = 'default';
+            text.on('pointerenter', (e) => {
+              showTooltip(fullName, e.global.x + 12, e.global.y - 8);
+            });
+            text.on('pointermove', (e) => {
+              showTooltip(fullName, e.global.x + 12, e.global.y - 8);
+            });
+            text.on('pointerleave', () => {
+              hideTooltip();
+            });
+          }
 
           app.stage.addChild(avatarContainer);
 
