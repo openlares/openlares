@@ -21,8 +21,8 @@ import { etc, getPublicKeyAsync, signAsync } from '@noble/ed25519';
 
 export interface DeviceIdentity {
   deviceId: string;
-  publicKey: string;   // base64url
-  privateKey: string;  // base64url
+  publicKey: string; // base64url
+  privateKey: string; // base64url
 }
 
 export interface DeviceSignature {
