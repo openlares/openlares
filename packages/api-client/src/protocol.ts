@@ -88,6 +88,8 @@ export interface ConnectParams {
     signedAt: number;
     nonce?: string;
   };
+  /** Client capabilities (e.g. "tool-events" to receive tool stream events). */
+  caps?: string[];
   locale: string;
   userAgent: string;
 }

@@ -79,6 +79,10 @@ export interface SessionActivity {
   startedAt: number;
   /** When the run ended (0 if still active). */
   endedAt: number;
+  /** Name of the tool currently in use (only while active). */
+  toolName?: string;
+  /** Timestamp of the last tool event (for badge TTL). */
+  toolTs?: number;
 }
 
 export interface GatewayState {
@@ -610,6 +614,26 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
               active: false,
               startedAt: state.sessionActivities[sk]?.startedAt || 0,
               endedAt: payload.ts,
+            },
+          },
+        }));
+      }
+    }
+
+    // Track per-session tool names from tool events
+    if (payload.stream === 'tool' && payload.data.phase === 'start' && payload.data.name) {
+      const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
+      if (sk) {
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [sk]: {
+              ...state.sessionActivities[sk],
+              active: state.sessionActivities[sk]?.active ?? true,
+              startedAt: state.sessionActivities[sk]?.startedAt ?? payload.ts,
+              endedAt: state.sessionActivities[sk]?.endedAt ?? 0,
+              toolName: payload.data.name,
+              toolTs: payload.ts,
             },
           },
         }));

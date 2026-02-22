@@ -14,7 +14,13 @@ export interface SessionSummary {
   active: boolean;
   updatedAt: number;
   /** Live activity state (for canvas badges). */
-  activity?: { active: boolean; startedAt: number; endedAt: number };
+  activity?: {
+    active: boolean;
+    startedAt: number;
+    endedAt: number;
+    toolName?: string;
+    toolTs?: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +239,65 @@ export function shouldShowActivity(activity: {
   if (activity.endedAt <= 0) return false;
   return Date.now() - activity.endedAt < ACTIVITY_LINGER_MS;
 }
+// ---------------------------------------------------------------------------
+// Tool icons — emoji badges for specific tool calls
+// ---------------------------------------------------------------------------
+
+/** How long a tool badge lingers after the tool event (ms). */
+export const TOOL_BADGE_TTL_MS = 30_000;
+
+/** Map a tool name to an emoji icon for the activity badge. */
+export function toolIcon(name: string | undefined): string {
+  if (!name) return '⚙️'; // gear
+  switch (name.toLowerCase()) {
+    case 'exec':
+    case 'bash':
+    case 'process':
+      return '🔧'; // wrench
+    case 'read':
+      return '📖'; // book
+    case 'write':
+    case 'edit':
+      return '✏️'; // pencil
+    case 'web_search':
+      return '🌐'; // globe
+    case 'web_fetch':
+      return '📥'; // inbox
+    case 'browser':
+      return '🖥️'; // desktop
+    case 'message':
+    case 'discord':
+    case 'slack':
+      return '💬'; // speech
+    case 'memory_search':
+    case 'memory_get':
+      return '🧠'; // brain
+    case 'image':
+      return '🖼️'; // frame
+    case 'tts':
+      return '🔊'; // speaker
+    case 'nodes':
+      return '📱'; // phone
+    case 'canvas':
+      return '🎨'; // palette
+    case 'sessions_spawn':
+    case 'sessions_send':
+    case 'subagents':
+      return '🤖'; // robot
+    default:
+      return '⚙️'; // gear
+  }
+}
+
+/**
+ * Whether a tool badge is still fresh enough to display.
+ * Returns true if the tool event happened within TOOL_BADGE_TTL_MS.
+ */
+export function isToolBadgeFresh(toolTs: number | undefined): boolean {
+  if (!toolTs) return false;
+  return Date.now() - toolTs < TOOL_BADGE_TTL_MS;
+}
+
 // ---------------------------------------------------------------------------
 // Colors
 // ---------------------------------------------------------------------------

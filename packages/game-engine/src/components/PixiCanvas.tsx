@@ -11,6 +11,8 @@ import {
   getRecencyOpacity,
   isWithinActiveWindow,
   shouldShowActivity,
+  toolIcon,
+  isToolBadgeFresh,
   generateAvatarPositions,
 } from '../canvas-utils';
 
@@ -34,6 +36,8 @@ interface SessionAvatar {
   color: number;
   isSelected: boolean;
   opacity: number;
+  /** Tool emoji badge text (below avatar). */
+  badge: Text | null;
   /** Animation state */
   phase: number;
   driftAngle: number;
@@ -194,6 +198,22 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             avatarContainer.addChildAt(activityRing, 0);
           }
 
+          // ---- Tool badge (emoji below the circle) ----
+          let badge: Text | null = null;
+          const hasTool = !!(
+            session.activity?.toolName && isToolBadgeFresh(session.activity.toolTs)
+          );
+          if (isRunning && hasTool) {
+            const icon = toolIcon(session.activity!.toolName);
+            badge = new Text({
+              text: icon,
+              style: { fontSize: 18, align: 'center' },
+            });
+            badge.x = -badge.width / 2;
+            badge.y = radius + 6;
+            avatarContainer.addChild(badge);
+          }
+
           // ---- Interaction ----
           avatarContainer.eventMode = 'static';
           avatarContainer.cursor = 'pointer';
@@ -236,6 +256,7 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             fullName,
             isTruncated,
             isRunning,
+            badge,
             x: pos.x,
             y: pos.y,
             radius,
@@ -294,6 +315,12 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
               const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
               avatar.activityRing.scale.set(ringScale);
             }
+          }
+
+          // Tool badge: gentle bob animation
+          if (avatar.badge) {
+            const bob = Math.sin(time * 2 + avatar.phase) * 2;
+            avatar.badge.y = avatar.radius + 6 + bob;
           }
         }
       });
