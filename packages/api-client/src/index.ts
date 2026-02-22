@@ -42,6 +42,10 @@ export {
 } from './gateway-client';
 export type { GatewayClientOptions, EventHandler, StatusChangeHandler } from './gateway-client';
 
+// Device identity
+export { getDeviceIdentity, signConnectChallenge } from './device-identity';
+export type { DeviceIdentity, DeviceSignature } from './device-identity';
+
 // Re-export core types consumers will need
 export type { ConnectionStatus, GatewayConfig } from '@openlares/core';
 
