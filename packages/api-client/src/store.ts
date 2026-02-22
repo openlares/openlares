@@ -100,6 +100,8 @@ export interface GatewayState {
   activityItems: ActivityItem[];
   /** Per-session last tool activity (for canvas badges). */
   sessionActivities: Record<string, SessionActivity>;
+  /** Map runId -> sessionKey for correlating agent events. */
+  runIdToSession: Record<string, string>;
   /** Whether the chat panel should be visible. */
   showChat: boolean;
   /** Whether older messages exist beyond what is loaded. */
@@ -156,6 +158,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   isStreaming: false,
   activityItems: [],
   sessionActivities: {},
+  runIdToSession: {},
   showChat: false,
   hasMoreHistory: true,
   historyLoading: false,
@@ -495,6 +498,13 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
   client.on('chat', (raw) => {
     const payload = raw as ChatEventPayload;
 
+    // Track runId -> sessionKey for correlating agent events
+    if (payload.runId && payload.sessionKey) {
+      set((state) => ({
+        runIdToSession: { ...state.runIdToSession, [payload.runId]: payload.sessionKey },
+      }));
+    }
+
     // Only process events for the currently viewed session
     const { activeSessionKey } = gatewayStore.getState();
     if (payload.sessionKey !== activeSessionKey) return;
@@ -580,14 +590,18 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
     const payload = raw as AgentEventPayload;
 
     // Track per-session activity for canvas badges
-    if (payload.stream === 'tool' && payload.data.phase === 'start' && payload.sessionKey) {
-      const toolName = payload.data.name || 'tool';
-      set((state) => ({
-        sessionActivities: {
-          ...state.sessionActivities,
-          [payload.sessionKey!]: { tool: toolName, ts: payload.ts },
-        },
-      }));
+    if (payload.stream === 'tool' && payload.data.phase === 'start') {
+      // Resolve sessionKey: direct from event, or correlate via runId
+      const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
+      if (sk) {
+        const toolName = payload.data.name || 'tool';
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [sk]: { tool: toolName, ts: payload.ts },
+          },
+        }));
+      }
     }
 
     set((state) => ({
