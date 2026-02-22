@@ -10,8 +10,7 @@ import {
   getSessionColor,
   getRecencyOpacity,
   isWithinActiveWindow,
-  isActivityFresh,
-  toolIcon,
+  shouldShowActivity,
   generateAvatarPositions,
 } from '../canvas-utils';
 
@@ -24,11 +23,11 @@ interface SessionAvatar {
   sessionKey: string;
   graphic: Graphics;
   text: Text;
-  badge: Text | null;
+  activityRing: Graphics | null;
   container: Graphics;
   fullName: string;
   isTruncated: boolean;
-  activityTs: number;
+  isRunning: boolean;
   x: number;
   y: number;
   radius: number;
@@ -184,23 +183,15 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           text.y = -(radius + text.height + 6);
           avatarContainer.addChild(text);
 
-          // ---- Activity badge (tool icon below circle) ----
-          let badge: Text | null = null;
-          let activityTs = 0;
-          if (session.lastActivity && isActivityFresh(session.lastActivity.ts)) {
-            const icon = toolIcon(session.lastActivity.tool);
-            activityTs = session.lastActivity.ts;
-            badge = new Text({
-              text: icon,
-              style: {
-                fontSize: 16,
-                fontFamily: 'Arial, sans-serif',
-                align: 'center',
-              },
-            });
-            badge.x = -badge.width / 2;
-            badge.y = radius + 6;
-            avatarContainer.addChild(badge);
+          // ---- Activity ring (pulsing outer ring when session is working) ----
+          let activityRing: Graphics | null = null;
+          const isRunning = !!(session.activity && shouldShowActivity(session.activity));
+          if (isRunning) {
+            activityRing = new Graphics();
+            activityRing.circle(0, 0, radius + 10);
+            activityRing.stroke({ color: 0x22d3ee, width: 2, alpha: 0.8 });
+            // Insert behind the main circle
+            avatarContainer.addChildAt(activityRing, 0);
           }
 
           // ---- Interaction ----
@@ -240,11 +231,11 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             sessionKey: session.sessionKey,
             graphic: circle,
             text,
-            badge,
+            activityRing,
             container: avatarContainer,
             fullName,
             isTruncated,
-            activityTs,
+            isRunning,
             x: pos.x,
             y: pos.y,
             radius,
@@ -294,17 +285,14 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             avatar.graphic.alpha = 0.6 + Math.sin(time * 3 + avatar.phase) * 0.3;
           }
 
-          // Activity badge: fade out over TTL
-          if (avatar.badge && avatar.activityTs > 0) {
-            const age = Date.now() - avatar.activityTs;
-            if (age > 30_000) {
-              avatar.badge.alpha = 0;
-            } else if (age > 20_000) {
-              // Fade out in last 10 seconds
-              avatar.badge.alpha = 1 - (age - 20_000) / 10_000;
-            } else {
-              // Gentle pulse while active
-              avatar.badge.alpha = 0.8 + Math.sin(time * 4) * 0.2;
+          // Activity ring: fast pulse while running, fade when done
+          if (avatar.activityRing) {
+            if (avatar.isRunning) {
+              const pulse = 0.5 + Math.sin(time * 6) * 0.5;
+              avatar.activityRing.alpha = pulse;
+              // Scale ring slightly for breathing effect
+              const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
+              avatar.activityRing.scale.set(ringScale);
             }
           }
         }

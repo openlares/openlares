@@ -14,7 +14,7 @@ export default function Home() {
   // Merge per-session activity into session summaries for the canvas
   const sessions = rawSessions.map((s) => {
     const activity = sessionActivities[s.sessionKey];
-    return activity ? { ...s, lastActivity: activity } : s;
+    return activity ? { ...s, activity } : s;
   });
 
   const handleSessionClick = (sessionKey: string) => {

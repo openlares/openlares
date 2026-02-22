@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   hashCode,
-  toolIcon,
-  isActivityFresh,
-  ACTIVITY_BADGE_TTL_MS,
+  shouldShowActivity,
+  ACTIVITY_LINGER_MS,
   friendlyName,
   resolveSessionName,
   getDisplayName,
@@ -314,42 +313,32 @@ describe('isWithinActiveWindow', () => {
 });
 
 // ---------------------------------------------------------------------------
-// toolIcon
+// shouldShowActivity
 // ---------------------------------------------------------------------------
 
-describe('toolIcon', () => {
-  it('returns wrench for exec', () => {
-    expect(toolIcon('exec')).toBe('\uD83D\uDD27');
+describe('shouldShowActivity', () => {
+  it('returns true for active run', () => {
+    expect(shouldShowActivity({ active: true, startedAt: Date.now(), endedAt: 0 })).toBe(true);
   });
 
-  it('returns globe for web_search', () => {
-    expect(toolIcon('web_search')).toBe('\uD83C\uDF10');
+  it('returns true for recently ended run', () => {
+    expect(shouldShowActivity({ active: false, startedAt: 0, endedAt: Date.now() - 1000 })).toBe(
+      true,
+    );
   });
 
-  it('returns brain for memory_search', () => {
-    expect(toolIcon('memory_search')).toBe('\uD83E\uDDE0');
+  it('returns false for old ended run', () => {
+    expect(
+      shouldShowActivity({
+        active: false,
+        startedAt: 0,
+        endedAt: Date.now() - ACTIVITY_LINGER_MS - 1,
+      }),
+    ).toBe(false);
   });
 
-  it('returns lightning for unknown tools', () => {
-    expect(toolIcon('some_custom_tool')).toBe('\u26A1');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// isActivityFresh
-// ---------------------------------------------------------------------------
-
-describe('isActivityFresh', () => {
-  it('returns true for recent activity', () => {
-    expect(isActivityFresh(Date.now() - 5000)).toBe(true);
-  });
-
-  it('returns false for old activity', () => {
-    expect(isActivityFresh(Date.now() - ACTIVITY_BADGE_TTL_MS - 1)).toBe(false);
-  });
-
-  it('returns true at boundary', () => {
-    expect(isActivityFresh(Date.now() - ACTIVITY_BADGE_TTL_MS + 100)).toBe(true);
+  it('returns false when endedAt is 0 and not active', () => {
+    expect(shouldShowActivity({ active: false, startedAt: 0, endedAt: 0 })).toBe(false);
   });
 });
 

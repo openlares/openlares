@@ -71,12 +71,14 @@ export function cleanSessionName(session: SessionSummary): string {
 // State shape
 // ---------------------------------------------------------------------------
 
-/** Last known tool activity for a session. */
+/** Activity state for a session. */
 export interface SessionActivity {
-  /** Tool name (e.g. "exec", "web_search"). */
-  tool: string;
-  /** When the tool call started (ms since epoch). */
-  ts: number;
+  /** Whether the session has an active run right now. */
+  active: boolean;
+  /** When the run started (ms since epoch). */
+  startedAt: number;
+  /** When the run ended (0 if still active). */
+  endedAt: number;
 }
 
 export interface GatewayState {
@@ -589,16 +591,26 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
   client.on('agent', (raw) => {
     const payload = raw as AgentEventPayload;
 
-    // Track per-session activity for canvas badges
-    if (payload.stream === 'tool' && payload.data.phase === 'start') {
-      // Resolve sessionKey: direct from event, or correlate via runId
+    // Track per-session activity from lifecycle events
+    if (payload.stream === 'lifecycle') {
       const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
-      if (sk) {
-        const toolName = payload.data.name || 'tool';
+      if (sk && payload.data.phase === 'start') {
         set((state) => ({
           sessionActivities: {
             ...state.sessionActivities,
-            [sk]: { tool: toolName, ts: payload.ts },
+            [sk]: { active: true, startedAt: payload.ts, endedAt: 0 },
+          },
+        }));
+      }
+      if (sk && payload.data.phase === 'end') {
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [sk]: {
+              active: false,
+              startedAt: state.sessionActivities[sk]?.startedAt || 0,
+              endedAt: payload.ts,
+            },
           },
         }));
       }
