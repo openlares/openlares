@@ -77,9 +77,7 @@ describe('getDisplayName', () => {
   });
 
   it('returns "Main" for g-agent-main-main title', () => {
-    expect(
-      getDisplayName(makeSession({ title: 'discord:g-agent-main-main' })),
-    ).toBe('Main');
+    expect(getDisplayName(makeSession({ title: 'discord:g-agent-main-main' }))).toBe('Main');
   });
 
   it('extracts discord channel name from title with #', () => {
@@ -89,9 +87,7 @@ describe('getDisplayName', () => {
   });
 
   it('extracts last # segment from title', () => {
-    expect(
-      getDisplayName(makeSession({ title: 'Server #general' })),
-    ).toBe('#general');
+    expect(getDisplayName(makeSession({ title: 'Server #general' }))).toBe('#general');
   });
 
   it('truncates long channel names', () => {
@@ -102,9 +98,7 @@ describe('getDisplayName', () => {
   });
 
   it('strips Cron: prefix', () => {
-    expect(
-      getDisplayName(makeSession({ title: 'Cron: daily-email' })),
-    ).toBe('daily-email');
+    expect(getDisplayName(makeSession({ title: 'Cron: daily-email' }))).toBe('daily-email');
   });
 
   it('adds robot emoji for subagents', () => {
@@ -138,9 +132,7 @@ describe('getDisplayName', () => {
   });
 
   it('uses short title as-is', () => {
-    expect(
-      getDisplayName(makeSession({ sessionKey: 'x', title: 'My Chat' })),
-    ).toBe('My Chat');
+    expect(getDisplayName(makeSession({ sessionKey: 'x', title: 'My Chat' }))).toBe('My Chat');
   });
 
   it('truncates long regular titles', () => {

@@ -33,13 +33,41 @@ export function hashCode(s: string): number {
 // ---------------------------------------------------------------------------
 
 const ADJECTIVES = [
-  'swift', 'calm', 'bold', 'warm', 'keen', 'soft', 'bright', 'cool',
-  'fair', 'deep', 'pure', 'clear', 'vivid', 'quick', 'gentle', 'wild',
+  'swift',
+  'calm',
+  'bold',
+  'warm',
+  'keen',
+  'soft',
+  'bright',
+  'cool',
+  'fair',
+  'deep',
+  'pure',
+  'clear',
+  'vivid',
+  'quick',
+  'gentle',
+  'wild',
 ];
 
 const NOUNS = [
-  'fox', 'owl', 'star', 'wave', 'leaf', 'fern', 'moon', 'wind',
-  'spark', 'cloud', 'brook', 'peak', 'dawn', 'glow', 'mist', 'tide',
+  'fox',
+  'owl',
+  'star',
+  'wave',
+  'leaf',
+  'fern',
+  'moon',
+  'wind',
+  'spark',
+  'cloud',
+  'brook',
+  'peak',
+  'dawn',
+  'glow',
+  'mist',
+  'tide',
 ];
 
 /**
@@ -114,10 +142,7 @@ export function getDisplayName(session: SessionSummary): string {
 // Colors
 // ---------------------------------------------------------------------------
 
-const PALETTE = [
-  0xf59e0b, 0x3b82f6, 0x8b5cf6, 0x10b981,
-  0xef4444, 0xf97316, 0x06b6d4, 0x84cc16,
-];
+const PALETTE = [0xf59e0b, 0x3b82f6, 0x8b5cf6, 0x10b981, 0xef4444, 0xf97316, 0x06b6d4, 0x84cc16];
 
 export function getSessionColor(sessionKey: string): number {
   return PALETTE[hashCode(sessionKey) % PALETTE.length]!;
@@ -139,11 +164,11 @@ export function getRecencyOpacity(session: SessionSummary, isSelected: boolean):
 
   const ageMs = Date.now() - session.updatedAt;
 
-  if (ageMs < 5 * 60 * 1000) return 1.0;       // <5 min: full
-  if (ageMs < 15 * 60 * 1000) return 0.85;      // 5\u201315 min
-  if (ageMs < 30 * 60 * 1000) return 0.65;      // 15\u201330 min
-  if (ageMs < ACTIVE_WINDOW_MS) return 0.4;      // 30\u201360 min
-  return 0;                                      // >1 hr: invisible
+  if (ageMs < 5 * 60 * 1000) return 1.0; // <5 min: full
+  if (ageMs < 15 * 60 * 1000) return 0.85; // 5\u201315 min
+  if (ageMs < 30 * 60 * 1000) return 0.65; // 15\u201330 min
+  if (ageMs < ACTIVE_WINDOW_MS) return 0.4; // 30\u201360 min
+  return 0; // >1 hr: invisible
 }
 
 /** Whether a session falls within the 1-hour active window. */

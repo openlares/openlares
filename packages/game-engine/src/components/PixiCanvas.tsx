@@ -219,11 +219,9 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
 
           // Floating drift
           avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
-          avatar.container.x =
-            avatar.anchorX + Math.cos(avatar.driftAngle) * avatar.driftRadius;
+          avatar.container.x = avatar.anchorX + Math.cos(avatar.driftAngle) * avatar.driftRadius;
           avatar.container.y =
-            avatar.anchorY +
-            Math.sin(avatar.driftAngle * 0.7 + avatar.phase) * avatar.driftRadius;
+            avatar.anchorY + Math.sin(avatar.driftAngle * 0.7 + avatar.phase) * avatar.driftRadius;
 
           // Active: pulsing glow
           if (avatar.isSelected) {
