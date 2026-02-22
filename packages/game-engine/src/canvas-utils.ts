@@ -149,9 +149,12 @@ export function resolveSessionName(session: SessionSummary): ResolvedName {
   }
 
   // ---- Hook sessions ----
-  if (sessionKey.startsWith('hook:')) {
+  // Matches both "hook:pipeline:task-42" and "agent:main:hook:pipeline:task-42"
+  const hookIdx = sessionKey.indexOf('hook:');
+  if (hookIdx !== -1) {
+    const hookPart = sessionKey.substring(hookIdx);
     // hook:pipeline:task-42 -> "pipeline: task-42"
-    const parts = sessionKey.split(':').slice(1);
+    const parts = hookPart.split(':').slice(1);
     const hookLabel = parts.join(': ');
     return { icon: '\uD83D\uDD17', name: title || hookLabel || 'hook' };
   }

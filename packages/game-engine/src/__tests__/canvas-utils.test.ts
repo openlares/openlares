@@ -129,6 +129,14 @@ describe('resolveSessionName', () => {
     expect(result.name).toBe('Deploy frontend');
   });
 
+  it('detects hook sessions with agent prefix', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'agent:main:hook:pipeline:ks-45385', title: '' }),
+    );
+    expect(result.icon).toBe('\uD83D\uDD17');
+    expect(result.name).toBe('pipeline: ks-45385');
+  });
+
   it('identifies subagents', () => {
     const result = resolveSessionName(
       makeSession({ sessionKey: 'subagent:abc123', title: 'Research task' }),
