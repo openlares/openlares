@@ -6,3 +6,12 @@
  */
 
 export { PixiCanvas } from './components/PixiCanvas';
+export type { SessionSummary } from './canvas-utils';
+export {
+  getDisplayName,
+  getSessionColor,
+  getRecencyOpacity,
+  isWithinActiveWindow,
+  friendlyName,
+  hashCode,
+} from './canvas-utils';

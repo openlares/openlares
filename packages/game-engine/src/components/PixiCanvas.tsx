@@ -3,15 +3,20 @@
 import { useEffect, useRef } from 'react';
 import { Application, Graphics, Text } from 'pixi.js';
 
-// Local interface to avoid circular dependency
-interface SessionSummary {
-  sessionKey: string;
-  title?: string;
-  active: boolean;
-  updatedAt: number;
-}
+import type { SessionSummary } from '../canvas-utils';
+import {
+  getDisplayName,
+  getSessionColor,
+  getRecencyOpacity,
+  isWithinActiveWindow,
+  generateAvatarPositions,
+} from '../canvas-utils';
 
-/** A single session avatar on the canvas */
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/** Internal representation of one rendered avatar. */
 interface SessionAvatar {
   sessionKey: string;
   graphic: Graphics;
@@ -21,8 +26,8 @@ interface SessionAvatar {
   y: number;
   radius: number;
   color: number;
-  isActive: boolean;
-  hasRecentActivity: boolean;
+  isSelected: boolean;
+  opacity: number;
   /** Animation state */
   phase: number;
   driftAngle: number;
@@ -40,100 +45,15 @@ interface PixiCanvasProps {
   onSessionClick: (sessionKey: string) => void;
 }
 
-// Helper functions
-function hashSessionKey(sessionKey: string): number {
-  let hash = 0;
-  for (let i = 0; i < sessionKey.length; i++) {
-    const char = sessionKey.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return Math.abs(hash);
-}
-
-function getSessionColor(sessionKey: string): number {
-  const colors = [0xf59e0b, 0x3b82f6, 0x8b5cf6, 0x10b981, 0xef4444, 0xf97316, 0x06b6d4, 0x84cc16];
-  const hash = hashSessionKey(sessionKey);
-  return colors[hash % colors.length]!;
-}
-
-function cleanSessionName(session: SessionSummary): string {
-  const { sessionKey, title } = session;
-
-  // Use title if available, otherwise clean the session key
-  const displayName = title || sessionKey;
-
-  // Clean discord sessions
-  if (displayName.includes('discord:')) {
-    // Extract channel name after #
-    const channelMatch = displayName.match(/#([^#]+)$/);
-    if (channelMatch) {
-      return `#${channelMatch[1]}`;
-    }
-
-    // Handle special cases like "discord:g-agent-main-main"
-    if (displayName.includes('g-agent-main-main')) {
-      return 'Main';
-    }
-  }
-
-  // Clean cron jobs
-  if (displayName.startsWith('Cron: ')) {
-    return displayName.substring(6);
-  }
-
-  // Add robot emoji for subagents
-  if (sessionKey.includes('subagent')) {
-    const cleaned = title || sessionKey;
-    return `🤖 ${cleaned}`;
-  }
-
-  // Fallback to raw display name or session key
-  return displayName;
-}
-
-function isRecentActivity(session: SessionSummary): boolean {
-  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-  return session.updatedAt > fiveMinutesAgo;
-}
-
-function generateAvatarPositions(
-  count: number,
-  width: number,
-  height: number,
-): Array<{ x: number; y: number }> {
-  const positions: Array<{ x: number; y: number }> = [];
-  const minSpacing = 120;
-  const margin = 80;
-
-  const cols = Math.floor((width - 2 * margin) / minSpacing);
-
-  for (let i = 0; i < count; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-
-    const baseX = margin + col * minSpacing;
-    const baseY = margin + row * minSpacing;
-
-    // Add some randomness to avoid perfect grid
-    const offsetX = (Math.random() - 0.5) * 40;
-    const offsetY = (Math.random() - 0.5) * 40;
-
-    positions.push({
-      x: Math.max(margin, Math.min(width - margin, baseX + offsetX)),
-      y: Math.max(margin, Math.min(height - margin, baseY + offsetY)),
-    });
-  }
-
-  return positions;
-}
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 /**
- * PixiCanvas — renders a PixiJS scene with clickable session avatars.
+ * PixiCanvas \u2014 renders a PixiJS scene with clickable session avatars.
  *
- * Shows session avatars as colored circles with labels, arranged
- * in a scattered grid pattern. Avatars are clickable and show
- * different visual states based on activity.
+ * Avatars fade over inactivity and disappear after 1 hour.
+ * Labels are placed above circles for readability.
  */
 export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -159,99 +79,94 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
       }
 
       container!.appendChild(app.canvas as HTMLCanvasElement);
-
-      // Enable interactivity on the stage
       app.stage.eventMode = 'static';
 
-      // Render function to create/update avatars
       function renderAvatars() {
-        // Clear existing avatars
-        avatarsRef.current.forEach((avatar) => {
-          app.stage.removeChild(avatar.container);
-        });
+        // Tear down previous avatars
+        avatarsRef.current.forEach((av) => app.stage.removeChild(av.container));
         avatarsRef.current = [];
 
-        if (sessions.length === 0) return;
+        // Keep only sessions inside the active window (+ always the selected one)
+        const visible = sessions.filter(
+          (s) => s.sessionKey === activeSessionKey || isWithinActiveWindow(s),
+        );
+
+        if (visible.length === 0) return;
 
         const positions = generateAvatarPositions(
-          sessions.length,
+          visible.length,
           app.screen.width,
           app.screen.height,
         );
 
-        sessions.forEach((session, index) => {
-          const position = positions[index];
-          if (!position) return;
+        visible.forEach((session, index) => {
+          const pos = positions[index];
+          if (!pos) return;
 
-          const isActive = session.sessionKey === activeSessionKey;
-          const hasRecent = isRecentActivity(session);
+          const isSelected = session.sessionKey === activeSessionKey;
+          const opacity = getRecencyOpacity(session, isSelected);
           const color = getSessionColor(session.sessionKey);
           const radius = 35;
 
-          // Container for the entire avatar (circle + text)
+          // Root container
           const avatarContainer = new Graphics();
-          avatarContainer.x = position.x;
-          avatarContainer.y = position.y;
+          avatarContainer.x = pos.x;
+          avatarContainer.y = pos.y;
 
-          // Main avatar circle
+          // ---- Circle ----
           const circle = new Graphics();
 
-          // Active state: amber ring and slightly larger
-          if (isActive) {
+          if (isSelected) {
+            // Amber selection ring
             circle.circle(0, 0, radius + 4);
             circle.fill({ color: 0xf59e0b, alpha: 0.8 });
             circle.circle(0, 0, radius);
             circle.fill({ color });
           } else {
             circle.circle(0, 0, radius);
-            const alpha = session.active ? 1.0 : 0.6;
-            circle.fill({ color, alpha });
+            circle.fill({ color, alpha: opacity });
           }
 
-          // Recent activity: green glow
-          if (hasRecent && !isActive) {
+          // Green glow for very recent sessions (< 5 min)
+          if (!isSelected && opacity >= 1.0) {
             const glow = new Graphics();
             glow.circle(0, 0, radius + 8);
-            glow.fill({ color: 0x10b981, alpha: 0.3 });
+            glow.fill({ color: 0x10b981, alpha: 0.25 });
             avatarContainer.addChild(glow);
           }
 
           avatarContainer.addChild(circle);
 
-          // Label text below the circle
-          const cleanName = cleanSessionName(session);
+          // ---- Label (above the circle) ----
+          const name = getDisplayName(session);
           const text = new Text({
-            text: cleanName,
+            text: name,
             style: {
-              fontSize: 12,
+              fontSize: 11,
               fill: 0xffffff,
-              fontFamily: 'Arial',
+              fontFamily: 'Arial, sans-serif',
               align: 'center',
               wordWrap: true,
-              wordWrapWidth: radius * 3,
+              wordWrapWidth: 110,
             },
           });
-
-          // Center the text horizontally below the circle
+          text.alpha = Math.max(0.5, opacity);
+          // Centre horizontally, place above circle
           text.x = -text.width / 2;
-          text.y = radius + 8;
+          text.y = -(radius + text.height + 6);
           avatarContainer.addChild(text);
 
-          // Make it interactive
+          // ---- Interaction ----
           avatarContainer.eventMode = 'static';
           avatarContainer.cursor = 'pointer';
 
-          // Click handler
           avatarContainer.on('pointerdown', () => {
             onSessionClick(session.sessionKey);
           });
-
-          // Hover effects
           avatarContainer.on('pointerenter', () => {
             const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
             if (av) av.targetScale = 1.15;
           });
-
           avatarContainer.on('pointerleave', () => {
             const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
             if (av) av.targetScale = 1.0;
@@ -259,69 +174,60 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
 
           app.stage.addChild(avatarContainer);
 
-          // Store reference
-          const avatar: SessionAvatar = {
+          avatarsRef.current.push({
             sessionKey: session.sessionKey,
             graphic: circle,
             text,
             container: avatarContainer,
-            x: position.x,
-            y: position.y,
+            x: pos.x,
+            y: pos.y,
             radius,
             color,
-            isActive,
-            hasRecentActivity: hasRecent,
-            // Animation state — each avatar gets unique timing
+            isSelected,
+            opacity,
             phase: Math.random() * Math.PI * 2,
             driftAngle: Math.random() * Math.PI * 2,
             driftSpeed: 0.2 + Math.random() * 0.3,
             driftRadius: 3 + Math.random() * 5,
-            anchorX: position.x,
-            anchorY: position.y,
+            anchorX: pos.x,
+            anchorY: pos.y,
             targetScale: 1.0,
             currentScale: 1.0,
-          };
-
-          avatarsRef.current.push(avatar);
+          });
         });
       }
 
-      // Initial render
       renderAvatars();
-
-      // Re-render on resize
       app.renderer.on('resize', renderAvatars);
 
-      // Animation loop — breathing, floating, smooth hover
+      // ----- Animation loop -----
       app.ticker.add((ticker) => {
-        const time = app.ticker.lastTime / 1000; // seconds
-        const dt = ticker.deltaTime / 60; // normalised delta
+        const time = app.ticker.lastTime / 1000;
+        const dt = ticker.deltaTime / 60;
 
         for (const avatar of avatarsRef.current) {
-          // Breathing: gentle scale oscillation
-          const breathAmp = avatar.isActive ? 0.06 : 0.025;
-          const breathSpeed = avatar.isActive ? 2.5 : 1.2;
+          // Breathing
+          const breathAmp = avatar.isSelected ? 0.06 : 0.025;
+          const breathSpeed = avatar.isSelected ? 2.5 : 1.2;
           const breath = Math.sin(time * breathSpeed + avatar.phase) * breathAmp;
 
-          // Smooth hover: lerp currentScale toward targetScale
+          // Smooth hover
           avatar.currentScale +=
             (avatar.targetScale - avatar.currentScale) * 0.12 * ((dt * 60) / 60);
 
-          // Apply combined scale
-          const finalScale = avatar.currentScale + breath;
-          avatar.container.scale.set(finalScale);
+          avatar.container.scale.set(avatar.currentScale + breath);
 
-          // Floating: slow circular drift around anchor
+          // Floating drift
           avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
-          const driftX = Math.cos(avatar.driftAngle) * avatar.driftRadius;
-          const driftY = Math.sin(avatar.driftAngle * 0.7 + avatar.phase) * avatar.driftRadius;
-          avatar.container.x = avatar.anchorX + driftX;
-          avatar.container.y = avatar.anchorY + driftY;
+          avatar.container.x =
+            avatar.anchorX + Math.cos(avatar.driftAngle) * avatar.driftRadius;
+          avatar.container.y =
+            avatar.anchorY +
+            Math.sin(avatar.driftAngle * 0.7 + avatar.phase) * avatar.driftRadius;
 
-          // Active session: pulsing amber glow (alpha oscillation)
-          if (avatar.isActive) {
-            const glowAlpha = 0.6 + Math.sin(time * 3 + avatar.phase) * 0.3;
-            avatar.graphic.alpha = glowAlpha;
+          // Active: pulsing glow
+          if (avatar.isSelected) {
+            avatar.graphic.alpha = 0.6 + Math.sin(time * 3 + avatar.phase) * 0.3;
           }
         }
       });
@@ -334,7 +240,7 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
       try {
         app.destroy(true, { children: true });
       } catch {
-        // Ignore — app wasn't fully initialized
+        // Ignore
       }
     };
   }, [sessions, activeSessionKey, onSessionClick]);
