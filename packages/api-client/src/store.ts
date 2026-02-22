@@ -71,6 +71,20 @@ export function cleanSessionName(session: SessionSummary): string {
 // State shape
 // ---------------------------------------------------------------------------
 
+/** Activity state for a session. */
+export interface SessionActivity {
+  /** Whether the session has an active run right now. */
+  active: boolean;
+  /** When the run started (ms since epoch). */
+  startedAt: number;
+  /** When the run ended (0 if still active). */
+  endedAt: number;
+  /** Name of the tool currently in use (only while active). */
+  toolName?: string;
+  /** Timestamp of the last tool event (for badge TTL). */
+  toolTs?: number;
+}
+
 export interface GatewayState {
   /** Current connection status. */
   connectionStatus: ConnectionStatus;
@@ -90,6 +104,10 @@ export interface GatewayState {
   isStreaming: boolean;
   /** Activity feed items (tool calls, status changes, etc.). */
   activityItems: ActivityItem[];
+  /** Per-session last tool activity (for canvas badges). */
+  sessionActivities: Record<string, SessionActivity>;
+  /** Map runId -> sessionKey for correlating agent events. */
+  runIdToSession: Record<string, string>;
   /** Whether the chat panel should be visible. */
   showChat: boolean;
   /** Whether older messages exist beyond what is loaded. */
@@ -145,6 +163,8 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   messages: [],
   isStreaming: false,
   activityItems: [],
+  sessionActivities: {},
+  runIdToSession: {},
   showChat: false,
   hasMoreHistory: true,
   historyLoading: false,
@@ -484,6 +504,13 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
   client.on('chat', (raw) => {
     const payload = raw as ChatEventPayload;
 
+    // Track runId -> sessionKey for correlating agent events
+    if (payload.runId && payload.sessionKey) {
+      set((state) => ({
+        runIdToSession: { ...state.runIdToSession, [payload.runId]: payload.sessionKey },
+      }));
+    }
+
     // Only process events for the currently viewed session
     const { activeSessionKey } = gatewayStore.getState();
     if (payload.sessionKey !== activeSessionKey) return;
@@ -567,6 +594,51 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
   // Agent tool-call events
   client.on('agent', (raw) => {
     const payload = raw as AgentEventPayload;
+
+    // Track per-session activity from lifecycle events
+    if (payload.stream === 'lifecycle') {
+      const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
+      if (sk && payload.data.phase === 'start') {
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [sk]: { active: true, startedAt: payload.ts, endedAt: 0 },
+          },
+        }));
+      }
+      if (sk && payload.data.phase === 'end') {
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [sk]: {
+              active: false,
+              startedAt: state.sessionActivities[sk]?.startedAt || 0,
+              endedAt: payload.ts,
+            },
+          },
+        }));
+      }
+    }
+
+    // Track per-session tool names from tool events
+    if (payload.stream === 'tool' && payload.data.phase === 'start' && payload.data.name) {
+      const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
+      if (sk) {
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [sk]: {
+              ...state.sessionActivities[sk],
+              active: state.sessionActivities[sk]?.active ?? true,
+              startedAt: state.sessionActivities[sk]?.startedAt ?? payload.ts,
+              endedAt: state.sessionActivities[sk]?.endedAt ?? 0,
+              toolName: payload.data.name,
+              toolTs: payload.ts,
+            },
+          },
+        }));
+      }
+    }
 
     set((state) => ({
       activityItems: [

@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   hashCode,
+  shouldShowActivity,
+  toolIcon,
+  isToolBadgeFresh,
+  TOOL_BADGE_TTL_MS,
+  ACTIVITY_LINGER_MS,
   friendlyName,
   resolveSessionName,
   getDisplayName,
@@ -311,6 +316,36 @@ describe('isWithinActiveWindow', () => {
 });
 
 // ---------------------------------------------------------------------------
+// shouldShowActivity
+// ---------------------------------------------------------------------------
+
+describe('shouldShowActivity', () => {
+  it('returns true for active run', () => {
+    expect(shouldShowActivity({ active: true, startedAt: Date.now(), endedAt: 0 })).toBe(true);
+  });
+
+  it('returns true for recently ended run', () => {
+    expect(shouldShowActivity({ active: false, startedAt: 0, endedAt: Date.now() - 1000 })).toBe(
+      true,
+    );
+  });
+
+  it('returns false for old ended run', () => {
+    expect(
+      shouldShowActivity({
+        active: false,
+        startedAt: 0,
+        endedAt: Date.now() - ACTIVITY_LINGER_MS - 1,
+      }),
+    ).toBe(false);
+  });
+
+  it('returns false when endedAt is 0 and not active', () => {
+    expect(shouldShowActivity({ active: false, startedAt: 0, endedAt: 0 })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // generateAvatarPositions
 // ---------------------------------------------------------------------------
 
@@ -330,5 +365,78 @@ describe('generateAvatarPositions', () => {
       expect(pos.x).toBeLessThanOrEqual(720);
       expect(pos.y).toBeGreaterThanOrEqual(80);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toolIcon
+// ---------------------------------------------------------------------------
+
+describe('toolIcon', () => {
+  it('returns wrench for exec', () => {
+    expect(toolIcon('exec')).toBe('🔧');
+  });
+
+  it('returns wrench for bash (alias)', () => {
+    expect(toolIcon('bash')).toBe('🔧');
+  });
+
+  it('returns book for read', () => {
+    expect(toolIcon('read')).toBe('📖');
+  });
+
+  it('returns pencil for write', () => {
+    expect(toolIcon('write')).toBe('✏️');
+  });
+
+  it('returns pencil for edit', () => {
+    expect(toolIcon('edit')).toBe('✏️');
+  });
+
+  it('returns globe for web_search', () => {
+    expect(toolIcon('web_search')).toBe('🌐');
+  });
+
+  it('returns brain for memory_search', () => {
+    expect(toolIcon('memory_search')).toBe('🧠');
+  });
+
+  it('returns gear for unknown tools', () => {
+    expect(toolIcon('some_custom_tool')).toBe('⚙️');
+  });
+
+  it('returns gear for undefined', () => {
+    expect(toolIcon(undefined)).toBe('⚙️');
+  });
+
+  it('is case-insensitive', () => {
+    expect(toolIcon('EXEC')).toBe('🔧');
+    expect(toolIcon('Web_Search')).toBe('🌐');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isToolBadgeFresh
+// ---------------------------------------------------------------------------
+
+describe('isToolBadgeFresh', () => {
+  it('returns true for recent tool event', () => {
+    expect(isToolBadgeFresh(Date.now() - 1000)).toBe(true);
+  });
+
+  it('returns false for old tool event', () => {
+    expect(isToolBadgeFresh(Date.now() - TOOL_BADGE_TTL_MS - 1000)).toBe(false);
+  });
+
+  it('returns false for undefined', () => {
+    expect(isToolBadgeFresh(undefined)).toBe(false);
+  });
+
+  it('returns false for zero', () => {
+    expect(isToolBadgeFresh(0)).toBe(false);
+  });
+
+  it('returns true at exactly TTL boundary', () => {
+    expect(isToolBadgeFresh(Date.now() - TOOL_BADGE_TTL_MS + 100)).toBe(true);
   });
 });

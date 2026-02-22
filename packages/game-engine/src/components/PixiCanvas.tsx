@@ -10,6 +10,9 @@ import {
   getSessionColor,
   getRecencyOpacity,
   isWithinActiveWindow,
+  shouldShowActivity,
+  toolIcon,
+  isToolBadgeFresh,
   generateAvatarPositions,
 } from '../canvas-utils';
 
@@ -22,15 +25,19 @@ interface SessionAvatar {
   sessionKey: string;
   graphic: Graphics;
   text: Text;
+  activityRing: Graphics | null;
   container: Graphics;
   fullName: string;
   isTruncated: boolean;
+  isRunning: boolean;
   x: number;
   y: number;
   radius: number;
   color: number;
   isSelected: boolean;
   opacity: number;
+  /** Tool emoji badge text (below avatar). */
+  badge: Text | null;
   /** Animation state */
   phase: number;
   driftAngle: number;
@@ -180,6 +187,33 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           text.y = -(radius + text.height + 6);
           avatarContainer.addChild(text);
 
+          // ---- Activity ring (pulsing outer ring when session is working) ----
+          let activityRing: Graphics | null = null;
+          const isRunning = !!(session.activity && shouldShowActivity(session.activity));
+          if (isRunning) {
+            activityRing = new Graphics();
+            activityRing.circle(0, 0, radius + 10);
+            activityRing.stroke({ color: 0x22d3ee, width: 2, alpha: 0.8 });
+            // Insert behind the main circle
+            avatarContainer.addChildAt(activityRing, 0);
+          }
+
+          // ---- Tool badge (emoji below the circle) ----
+          let badge: Text | null = null;
+          const hasTool = !!(
+            session.activity?.toolName && isToolBadgeFresh(session.activity.toolTs)
+          );
+          if (isRunning && hasTool) {
+            const icon = toolIcon(session.activity!.toolName);
+            badge = new Text({
+              text: icon,
+              style: { fontSize: 18, align: 'center' },
+            });
+            badge.x = -badge.width / 2;
+            badge.y = radius + 6;
+            avatarContainer.addChild(badge);
+          }
+
           // ---- Interaction ----
           avatarContainer.eventMode = 'static';
           avatarContainer.cursor = 'pointer';
@@ -217,9 +251,12 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             sessionKey: session.sessionKey,
             graphic: circle,
             text,
+            activityRing,
             container: avatarContainer,
             fullName,
             isTruncated,
+            isRunning,
+            badge,
             x: pos.x,
             y: pos.y,
             radius,
@@ -267,6 +304,23 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           // Active: pulsing glow
           if (avatar.isSelected) {
             avatar.graphic.alpha = 0.6 + Math.sin(time * 3 + avatar.phase) * 0.3;
+          }
+
+          // Activity ring: fast pulse while running, fade when done
+          if (avatar.activityRing) {
+            if (avatar.isRunning) {
+              const pulse = 0.5 + Math.sin(time * 6) * 0.5;
+              avatar.activityRing.alpha = pulse;
+              // Scale ring slightly for breathing effect
+              const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
+              avatar.activityRing.scale.set(ringScale);
+            }
+          }
+
+          // Tool badge: gentle bob animation
+          if (avatar.badge) {
+            const bob = Math.sin(time * 2 + avatar.phase) * 2;
+            avatar.badge.y = avatar.radius + 6 + bob;
           }
         }
       });

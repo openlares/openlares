@@ -62,4 +62,4 @@ export {
   shouldDisplayMessage,
   cleanMessageContent,
 } from './store';
-export type { GatewayState, GatewayActions, GatewayStore } from './store';
+export type { GatewayState, GatewayActions, GatewayStore, SessionActivity } from './store';

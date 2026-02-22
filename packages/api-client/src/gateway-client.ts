@@ -362,6 +362,7 @@ export class GatewayClient {
       role,
       scopes,
       device,
+      caps: ['tool-events'],
       auth: { token: this.token },
       locale: typeof navigator !== 'undefined' ? navigator.language : 'en',
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'openlares',

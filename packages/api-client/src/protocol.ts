@@ -88,6 +88,8 @@ export interface ConnectParams {
     signedAt: number;
     nonce?: string;
   };
+  /** Client capabilities (e.g. "tool-events" to receive tool stream events). */
+  caps?: string[];
   locale: string;
   userAgent: string;
 }
@@ -139,10 +141,31 @@ export interface ChatEventPayload {
 /** Payload for the `agent` event (tool calls, etc.). */
 export interface AgentEventPayload {
   runId: string;
+  /** Session this event belongs to (may be absent for global events). */
+  sessionKey?: string;
   seq: number;
+  /** Event stream: "tool", "lifecycle", "compaction", "fallback". */
   stream: string;
   ts: number;
-  data: Record<string, unknown>;
+  data: AgentEventData;
+}
+
+/** Structured data inside an agent event. */
+export interface AgentEventData {
+  /** Unique ID for the tool call (present when stream is "tool"). */
+  toolCallId?: string;
+  /** Tool name, e.g. "exec", "read", "web_search" (present when stream is "tool"). */
+  name?: string;
+  /** Lifecycle phase of the tool call: "start", "update", "result". */
+  phase?: string;
+  /** Tool arguments (only on phase "start"). */
+  args?: unknown;
+  /** Partial result (only on phase "update"). */
+  partialResult?: unknown;
+  /** Final result (only on phase "result"). */
+  result?: unknown;
+  /** Catch-all for other fields. */
+  [key: string]: unknown;
 }
 
 /** Payload for the `tick` keepalive event. */

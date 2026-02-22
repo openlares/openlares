@@ -6,9 +6,16 @@ import { useGatewayStore } from '@openlares/api-client';
 
 export default function Home() {
   const connectionStatus = useGatewayStore((s) => s.connectionStatus);
-  const sessions = useGatewayStore((s) => s.sessions);
+  const rawSessions = useGatewayStore((s) => s.sessions);
+  const sessionActivities = useGatewayStore((s) => s.sessionActivities);
   const activeSessionKey = useGatewayStore((s) => s.activeSessionKey);
   const selectSession = useGatewayStore((s) => s.selectSession);
+
+  // Merge per-session activity into session summaries for the canvas
+  const sessions = rawSessions.map((s) => {
+    const activity = sessionActivities[s.sessionKey];
+    return activity ? { ...s, activity } : s;
+  });
 
   const handleSessionClick = (sessionKey: string) => {
     selectSession(sessionKey);
