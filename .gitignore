@@ -31,3 +31,7 @@ Thumbs.db
 npm-debug.log*
 pnpm-debug.log*
 *.tsbuildinfo
+
+# Dev server HTTPS certs
+packages/app/certificates/
+https-proxy.js
