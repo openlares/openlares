@@ -32,6 +32,10 @@ npm-debug.log*
 pnpm-debug.log*
 *.tsbuildinfo
 
-# Dev server HTTPS certs
-packages/app/certificates/
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+coverage/
 https-proxy.js
+packages/app/certificates/
