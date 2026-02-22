@@ -10,8 +10,8 @@
 import { etc, getPublicKeyAsync, signAsync } from '@noble/ed25519';
 
 // Configure @noble/ed25519 to use WebCrypto for SHA-512
-etc.sha512Async = async (message: Uint8Array): Promise<Uint8Array> => {
-  const hash = await crypto.subtle.digest('SHA-512', message);
+(etc as Record<string, unknown>).sha512Async = async (message: Uint8Array): Promise<Uint8Array> => {
+  const hash = await crypto.subtle.digest('SHA-512', message.slice().buffer as ArrayBuffer);
   return new Uint8Array(hash);
 };
 
@@ -68,7 +68,7 @@ function bytesToHex(bytes: Uint8Array): string {
 // ---------------------------------------------------------------------------
 
 async function computeDeviceId(publicKeyBytes: Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest('SHA-256', publicKeyBytes.buffer);
+  const hash = await crypto.subtle.digest('SHA-256', publicKeyBytes.slice().buffer as ArrayBuffer);
   return bytesToHex(new Uint8Array(hash));
 }
 

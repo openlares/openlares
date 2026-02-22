@@ -110,6 +110,9 @@ export class GatewayClient {
   private shouldReconnect = false;
 
   // Handshake state
+  // Handshake state
+  private connectNonce: string | undefined;
+
   // Device identity for gateway auth
   private deviceIdentity: DeviceIdentity | null = null;
 
