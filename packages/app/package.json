@@ -19,15 +19,15 @@
     "next": "^16.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-resizable-panels": "^4.6.4",
+    "react-resizable-panels": "^4.6.5",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.0.0",
-    "@types/node": "25.2.3",
+    "@tailwindcss/postcss": "^4.2.0",
+    "@types/node": "25.3.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "tailwindcss": "^4.0.0",
+    "tailwindcss": "^4.2.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }
