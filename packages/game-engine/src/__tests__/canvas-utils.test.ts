@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   hashCode,
+  toolIcon,
+  isActivityFresh,
+  ACTIVITY_BADGE_TTL_MS,
   friendlyName,
   resolveSessionName,
   getDisplayName,
@@ -307,6 +310,46 @@ describe('isWithinActiveWindow', () => {
     expect(
       isWithinActiveWindow(makeSession({ updatedAt: Date.now() - ACTIVE_WINDOW_MS - 1 })),
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toolIcon
+// ---------------------------------------------------------------------------
+
+describe('toolIcon', () => {
+  it('returns wrench for exec', () => {
+    expect(toolIcon('exec')).toBe('\uD83D\uDD27');
+  });
+
+  it('returns globe for web_search', () => {
+    expect(toolIcon('web_search')).toBe('\uD83C\uDF10');
+  });
+
+  it('returns brain for memory_search', () => {
+    expect(toolIcon('memory_search')).toBe('\uD83E\uDDE0');
+  });
+
+  it('returns lightning for unknown tools', () => {
+    expect(toolIcon('some_custom_tool')).toBe('\u26A1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isActivityFresh
+// ---------------------------------------------------------------------------
+
+describe('isActivityFresh', () => {
+  it('returns true for recent activity', () => {
+    expect(isActivityFresh(Date.now() - 5000)).toBe(true);
+  });
+
+  it('returns false for old activity', () => {
+    expect(isActivityFresh(Date.now() - ACTIVITY_BADGE_TTL_MS - 1)).toBe(false);
+  });
+
+  it('returns true at boundary', () => {
+    expect(isActivityFresh(Date.now() - ACTIVITY_BADGE_TTL_MS + 100)).toBe(true);
   });
 });
 

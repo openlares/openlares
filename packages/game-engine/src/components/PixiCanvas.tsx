@@ -10,6 +10,8 @@ import {
   getSessionColor,
   getRecencyOpacity,
   isWithinActiveWindow,
+  isActivityFresh,
+  toolIcon,
   generateAvatarPositions,
 } from '../canvas-utils';
 
@@ -22,9 +24,11 @@ interface SessionAvatar {
   sessionKey: string;
   graphic: Graphics;
   text: Text;
+  badge: Text | null;
   container: Graphics;
   fullName: string;
   isTruncated: boolean;
+  activityTs: number;
   x: number;
   y: number;
   radius: number;
@@ -180,6 +184,25 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           text.y = -(radius + text.height + 6);
           avatarContainer.addChild(text);
 
+          // ---- Activity badge (tool icon below circle) ----
+          let badge: Text | null = null;
+          let activityTs = 0;
+          if (session.lastActivity && isActivityFresh(session.lastActivity.ts)) {
+            const icon = toolIcon(session.lastActivity.tool);
+            activityTs = session.lastActivity.ts;
+            badge = new Text({
+              text: icon,
+              style: {
+                fontSize: 16,
+                fontFamily: 'Arial, sans-serif',
+                align: 'center',
+              },
+            });
+            badge.x = -badge.width / 2;
+            badge.y = radius + 6;
+            avatarContainer.addChild(badge);
+          }
+
           // ---- Interaction ----
           avatarContainer.eventMode = 'static';
           avatarContainer.cursor = 'pointer';
@@ -217,9 +240,11 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             sessionKey: session.sessionKey,
             graphic: circle,
             text,
+            badge,
             container: avatarContainer,
             fullName,
             isTruncated,
+            activityTs,
             x: pos.x,
             y: pos.y,
             radius,
@@ -267,6 +292,20 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
           // Active: pulsing glow
           if (avatar.isSelected) {
             avatar.graphic.alpha = 0.6 + Math.sin(time * 3 + avatar.phase) * 0.3;
+          }
+
+          // Activity badge: fade out over TTL
+          if (avatar.badge && avatar.activityTs > 0) {
+            const age = Date.now() - avatar.activityTs;
+            if (age > 30_000) {
+              avatar.badge.alpha = 0;
+            } else if (age > 20_000) {
+              // Fade out in last 10 seconds
+              avatar.badge.alpha = 1 - (age - 20_000) / 10_000;
+            } else {
+              // Gentle pulse while active
+              avatar.badge.alpha = 0.8 + Math.sin(time * 4) * 0.2;
+            }
           }
         }
       });

@@ -14,6 +14,9 @@ export {
   getSessionColor,
   getRecencyOpacity,
   isWithinActiveWindow,
+  isActivityFresh,
+  toolIcon,
+  ACTIVITY_BADGE_TTL_MS,
   friendlyName,
   hashCode,
 } from './canvas-utils';

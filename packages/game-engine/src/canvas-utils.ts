@@ -13,6 +13,8 @@ export interface SessionSummary {
   title?: string;
   active: boolean;
   updatedAt: number;
+  /** Last tool activity (for canvas badges). */
+  lastActivity?: { tool: string; ts: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +213,44 @@ export function getFullName(session: SessionSummary): string {
   return icon ? `${icon} ${name}` : name;
 }
 
+// ---------------------------------------------------------------------------
+// Tool activity icons
+// ---------------------------------------------------------------------------
+
+/** How long (ms) before an activity badge fades out. */
+export const ACTIVITY_BADGE_TTL_MS = 30_000; // 30 seconds
+
+const TOOL_ICONS: Record<string, string> = {
+  exec: '\uD83D\uDD27', // 🔧 wrench
+  process: '\uD83D\uDD27', // 🔧 wrench
+  read: '\uD83D\uDCD6', // 📖 open book
+  Read: '\uD83D\uDCD6', // 📖 open book
+  write: '\u270F\uFE0F', // ✏ pencil
+  Write: '\u270F\uFE0F', // ✏ pencil
+  edit: '\u270F\uFE0F', // ✏ pencil
+  Edit: '\u270F\uFE0F', // ✏ pencil
+  web_search: '\uD83C\uDF10', // 🌐 globe
+  web_fetch: '\uD83C\uDF10', // 🌐 globe
+  browser: '\uD83D\uDDA5\uFE0F', // 🖥 desktop
+  message: '\uD83D\uDCAC', // 💬 speech
+  tts: '\uD83D\uDD0A', // 🔊 speaker
+  image: '\uD83D\uDDBC\uFE0F', // 🖼 frame
+  nodes: '\uD83D\uDCE1', // 📡 satellite
+  memory_search: '\uD83E\uDDE0', // 🧠 brain
+  memory_get: '\uD83E\uDDE0', // 🧠 brain
+  sessions_spawn: '\uD83E\uDD16', // 🤖 robot
+  sessions_send: '\uD83D\uDCE8', // 📨 envelope
+};
+
+/** Map a tool name to an emoji icon. */
+export function toolIcon(toolName: string): string {
+  return TOOL_ICONS[toolName] || '\u26A1'; // fallback: lightning
+}
+
+/** Whether an activity is still fresh enough to display. */
+export function isActivityFresh(ts: number): boolean {
+  return Date.now() - ts < ACTIVITY_BADGE_TTL_MS;
+}
 // ---------------------------------------------------------------------------
 // Colors
 // ---------------------------------------------------------------------------

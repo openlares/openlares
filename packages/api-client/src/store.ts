@@ -71,6 +71,14 @@ export function cleanSessionName(session: SessionSummary): string {
 // State shape
 // ---------------------------------------------------------------------------
 
+/** Last known tool activity for a session. */
+export interface SessionActivity {
+  /** Tool name (e.g. "exec", "web_search"). */
+  tool: string;
+  /** When the tool call started (ms since epoch). */
+  ts: number;
+}
+
 export interface GatewayState {
   /** Current connection status. */
   connectionStatus: ConnectionStatus;
@@ -90,6 +98,8 @@ export interface GatewayState {
   isStreaming: boolean;
   /** Activity feed items (tool calls, status changes, etc.). */
   activityItems: ActivityItem[];
+  /** Per-session last tool activity (for canvas badges). */
+  sessionActivities: Record<string, SessionActivity>;
   /** Whether the chat panel should be visible. */
   showChat: boolean;
   /** Whether older messages exist beyond what is loaded. */
@@ -145,6 +155,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   messages: [],
   isStreaming: false,
   activityItems: [],
+  sessionActivities: {},
   showChat: false,
   hasMoreHistory: true,
   historyLoading: false,
@@ -567,6 +578,17 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
   // Agent tool-call events
   client.on('agent', (raw) => {
     const payload = raw as AgentEventPayload;
+
+    // Track per-session activity for canvas badges
+    if (payload.stream === 'tool' && payload.data.phase === 'start' && payload.sessionKey) {
+      const toolName = payload.data.name || 'tool';
+      set((state) => ({
+        sessionActivities: {
+          ...state.sessionActivities,
+          [payload.sessionKey!]: { tool: toolName, ts: payload.ts },
+        },
+      }));
+    }
 
     set((state) => ({
       activityItems: [
