@@ -536,17 +536,26 @@ const TOOL_POLL_INTERVAL_MS = 2_000;
 
 /**
  * Extract the latest tool name from chat history messages.
- * Scans from end to beginning, returns the first tool_use name found.
+ *
+ * Scans from end to beginning. Handles multiple gateway formats:
+ * - `toolResult` role messages (have `toolName` directly)
+ * - Content blocks with `type: "toolCall"` / `"tool_use"` / `"tool_call"` and `name`
  */
 export function extractLatestToolName(messages: unknown[]): string | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i] as { content?: unknown };
-    if (!msg?.content) continue;
+    const msg = messages[i] as Record<string, unknown>;
+    if (!msg) continue;
 
-    // Content can be an array of blocks or a string
-    if (Array.isArray(msg.content)) {
-      for (let j = msg.content.length - 1; j >= 0; j--) {
-        const block = msg.content[j] as { type?: string; name?: string };
+    // Gateway stores tool results as role="toolResult" with toolName field
+    if (msg.role === 'toolResult' && typeof msg.toolName === 'string') {
+      return msg.toolName;
+    }
+
+    // Check content blocks for tool call types
+    const content = msg.content;
+    if (Array.isArray(content)) {
+      for (let j = content.length - 1; j >= 0; j--) {
+        const block = content[j] as { type?: string; name?: string };
         if (
           block?.type &&
           ['toolcall', 'tool_call', 'tooluse', 'tool_use'].includes(block.type.toLowerCase()) &&
@@ -594,7 +603,7 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
     try {
       const result = (await client.request('chat.history', {
         sessionKey,
-        limit: 2,
+        limit: 10,
       })) as { messages?: unknown[] };
 
       if (result?.messages && Array.isArray(result.messages)) {
