@@ -39,17 +39,15 @@ export function cleanSessionName(session: SessionSummary): string {
   const displayName = title || sessionKey;
 
   // Clean discord sessions
-  if (displayName.includes('discord:')) {
-    // Extract channel name after #
-    const channelMatch = displayName.match(/#([^#]+)$/);
-    if (channelMatch) {
-      return `#${channelMatch[1]}`;
-    }
-
+  if (displayName.includes('discord:') || sessionKey.includes(':discord:')) {
     // Handle special cases like "discord:g-agent-main-main"
     if (displayName.includes('g-agent-main-main')) {
       return 'Main';
     }
+    // Strip provider prefix + ID: "discord:1467208089403920651#openlares" → "#openlares"
+    const stripped = displayName.replace(/^discord:\d+/, '');
+    if (stripped.startsWith('#')) return stripped;
+    // Title already clean or has its own format — return as-is
   }
 
   // Clean cron jobs

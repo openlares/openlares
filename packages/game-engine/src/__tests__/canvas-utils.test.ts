@@ -105,18 +105,29 @@ describe('resolveSessionName', () => {
     expect(result).toEqual({ icon: '', name: 'Main' });
   });
 
-  it('identifies discord with channel title', () => {
+  it('strips discord ID prefix from title', () => {
     const result = resolveSessionName(
       makeSession({
         sessionKey: 'agent:main:discord:channel:123',
-        title: 'Guild #openlares channel id:123',
+        title: 'discord:1467208089403920651#openlares',
       }),
     );
     expect(result.icon).toBe('\uD83D\uDCAC');
-    expect(result.name).toBe('Guild #openlares channel id:123');
+    expect(result.name).toBe('#openlares');
   });
 
-  it('preserves full discord title with multiple # signs', () => {
+  it('keeps clean discord title as-is', () => {
+    const result = resolveSessionName(
+      makeSession({
+        sessionKey: 'agent:main:discord:channel:123',
+        title: '#general',
+      }),
+    );
+    expect(result.icon).toBe('\uD83D\uDCAC');
+    expect(result.name).toBe('#general');
+  });
+
+  it('preserves full discord thread title with multiple # signs', () => {
     const result = resolveSessionName(
       makeSession({
         sessionKey: 'agent:main:discord:thread:456',
