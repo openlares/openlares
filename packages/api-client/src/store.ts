@@ -298,9 +298,31 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 
     set({ sessions });
 
-    // Activity state is NOT seeded here — gateway's sessions.list has no `active` field.
-    // Activity indicators are driven purely by lifecycle events received via WebSocket.
-    // This prevents stale tool badges / rings showing after page refresh.
+    // Seed activity state for sessions marked active by the gateway.
+    // This ensures cyan rings appear after page refresh for running sessions.
+    const currentActivities = get().sessionActivities;
+    const seeded: Record<string, SessionActivity> = { ...currentActivities };
+    for (const s of sessions) {
+      if (s.active && !currentActivities[s.sessionKey]?.active) {
+        seeded[s.sessionKey] = {
+          active: true,
+          startedAt: Date.now(), // Use now, not updatedAt — avoids 90s stale cutoff killing poll
+          endedAt: 0,
+        };
+      }
+    }
+    set({ sessionActivities: seeded });
+
+    // Start tool polling for seeded active sessions (lifecycle start
+    // events won't replay after page refresh, so we kick off polls here).
+    const gwClient = get().client;
+    if (gwClient) {
+      for (const s of sessions) {
+        if (s.active && !currentActivities[s.sessionKey]?.active) {
+          startToolPoll(s.sessionKey, gwClient, set);
+        }
+      }
+    }
   },
 
   loadHistory: async (sessionKey) => {
@@ -616,10 +638,8 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
           : '';
         const prevKey = lastSeenPollKey.get(sessionKey);
         if (msgKey) lastSeenPollKey.set(sessionKey, msgKey);
-        // First poll establishes baseline — don't show stale badges from old history
-        if (!prevKey) return;
-        // Nothing changed since last poll
-        if (msgKey === prevKey) return;
+        // Nothing changed since last poll (skip only if we have a baseline)
+        if (prevKey && msgKey === prevKey) return;
 
         const toolName = extractLatestToolName(result.messages);
         if (toolName) {
