@@ -316,11 +316,16 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     // Start tool polling for seeded active sessions (lifecycle start
     // events won't replay after page refresh, so we kick off polls here).
     const gwClient = get().client;
+    const seededKeys = sessions.filter(s => s.active && !currentActivities[s.sessionKey]?.active);
+    console.log('[refresh-seed] sessions:', sessions.length,
+      'active:', sessions.filter(s => s.active).length,
+      'newly seeded:', seededKeys.length,
+      'client:', !!gwClient,
+      seededKeys.map(s => s.sessionKey));
     if (gwClient) {
-      for (const s of sessions) {
-        if (s.active && !currentActivities[s.sessionKey]?.active) {
-          startToolPoll(s.sessionKey, gwClient, set);
-        }
+      for (const s of seededKeys) {
+        console.log('[refresh-seed] starting poll for', s.sessionKey);
+        startToolPoll(s.sessionKey, gwClient, set);
       }
     }
   },
