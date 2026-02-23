@@ -360,4 +360,37 @@ describe('extractLatestToolName', () => {
     const messages = [{ role: 'system' }];
     expect(extractLatestToolName(messages)).toBeUndefined();
   });
+  it('handles tooluse/ type variant', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [{ type: 'tooluse', name: 'memory_search' }],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBe('memory_search');
+  });
+
+  it('skips non-tool blocks and finds tool_use later in content', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Let me check' },
+          { type: 'thinking', text: '...' },
+          { type: 'tool_use', name: 'nodes', id: '1', input: {} },
+        ],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBe('nodes');
+  });
+
+  it('ignores blocks without name property', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use' }],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBeUndefined();
+  });
 });

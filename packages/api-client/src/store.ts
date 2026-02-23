@@ -298,6 +298,27 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     }));
 
     set({ sessions });
+
+    // Seed activity state for sessions that are currently active
+    // (restores activity indicators after page refresh)
+    const recentCutoff = 2 * 60 * 1000; // 2 minutes
+    const now = Date.now();
+    for (const s of sessions) {
+      const isRecentlyActive = s.active || now - s.updatedAt < recentCutoff;
+      if (isRecentlyActive && !gatewayStore.getState().sessionActivities[s.sessionKey]?.active) {
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [s.sessionKey]: {
+              active: true,
+              startedAt: s.updatedAt || now,
+              endedAt: 0,
+            },
+          },
+        }));
+        startToolPoll(s.sessionKey, client, set);
+      }
+    }
   },
 
   loadHistory: async (sessionKey) => {
