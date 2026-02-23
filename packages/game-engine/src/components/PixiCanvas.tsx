@@ -320,16 +320,11 @@ export function PixiCanvas({
         const activities = activitiesRef.current;
 
         for (const avatar of avatarsRef.current.values()) {
-          // Breathing
-          const breathAmp = avatar.isSelected ? 0.06 : 0.025;
-          const breathSpeed = avatar.isSelected ? 2.5 : 1.2;
-          const breath = Math.sin(time * breathSpeed + avatar.phase) * breathAmp;
-
-          // Smooth hover
+          // Smooth hover (no breathing)
           avatar.currentScale +=
             (avatar.targetScale - avatar.currentScale) * 0.12 * ((dt * 60) / 60);
 
-          avatar.container.scale.set(avatar.currentScale + breath);
+          avatar.container.scale.set(avatar.currentScale);
 
           // Floating drift
           avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
@@ -355,17 +350,8 @@ export function PixiCanvas({
             avatar.activityRing.alpha = 0;
           }
 
-          // ---- Tool badge (driven by live activities ref) ----
-          const hasTool = !!(activity?.toolName && isToolBadgeFresh(activity.toolTs));
-          if (isRunning && hasTool) {
-            const icon = toolIcon(activity!.toolName);
-            if (avatar.badge.text !== icon) avatar.badge.text = icon;
-            avatar.badge.alpha = 1;
-            const bob = Math.sin(time * 2 + avatar.phase) * 2;
-            avatar.badge.y = avatar.radius + 6 + bob;
-          } else {
-            avatar.badge.alpha = 0;
-          }
+          // Tool badge hidden (cyan ring only for now)
+          avatar.badge.alpha = 0;
         }
       });
     }
