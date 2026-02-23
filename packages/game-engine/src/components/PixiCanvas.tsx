@@ -27,14 +27,8 @@ interface SessionAvatar {
   sessionKey: string;
   graphic: Graphics;
   text: Text;
-  /** Traveling arc border animation (n8n-style). */
-  arcTrail: Graphics;
+  activityRing: Graphics;
   badge: Text;
-  /** Progress indicator demos (for comparison, pick one later). */
-  progressDots: Text;
-  progressSpinner: Text;
-  progressBraille: Text;
-  progressBlocks: Text;
   glow: Graphics;
   container: Graphics;
   fullName: string;
@@ -177,10 +171,12 @@ export function PixiCanvas({
       glow.alpha = !isSelected && opacity >= 1.0 ? 1 : 0;
       avatarContainer.addChild(glow);
 
-      // ---- Traveling arc trail (n8n-style, redrawn each frame by ticker) ----
-      const arcTrail = new Graphics();
-      arcTrail.alpha = 0; // ticker will control
-      avatarContainer.addChild(arcTrail);
+      // ---- Activity ring (always present; visibility driven by ticker) ----
+      const activityRing = new Graphics();
+      activityRing.circle(0, 0, radius + 10);
+      activityRing.stroke({ color: 0x22d3ee, width: 2, alpha: 0.8 });
+      activityRing.alpha = 0; // ticker will set this
+      avatarContainer.addChild(activityRing);
 
       // ---- Circle ----
       const circle = new Graphics();
@@ -220,34 +216,8 @@ export function PixiCanvas({
       });
       badge.x = -badge.width / 2;
       badge.y = radius + 6;
-      badge.alpha = 0;
+      badge.alpha = 0; // ticker will set this
       avatarContainer.addChild(badge);
-
-      // ---- Progress indicator demos (shown side by side for comparison) ----
-      const progStyle = { fontSize: 11, fill: 0xffffff, fontFamily: 'monospace' };
-      const progressDots = new Text({ text: '', style: progStyle });
-      progressDots.x = -50;
-      progressDots.y = radius + 28;
-      progressDots.alpha = 0;
-      avatarContainer.addChild(progressDots);
-
-      const progressSpinner = new Text({ text: '', style: progStyle });
-      progressSpinner.x = -20;
-      progressSpinner.y = radius + 28;
-      progressSpinner.alpha = 0;
-      avatarContainer.addChild(progressSpinner);
-
-      const progressBraille = new Text({ text: '', style: progStyle });
-      progressBraille.x = 5;
-      progressBraille.y = radius + 28;
-      progressBraille.alpha = 0;
-      avatarContainer.addChild(progressBraille);
-
-      const progressBlocks = new Text({ text: '', style: progStyle });
-      progressBlocks.x = 25;
-      progressBlocks.y = radius + 28;
-      progressBlocks.alpha = 0;
-      avatarContainer.addChild(progressBlocks);
 
       // ---- Interaction ----
       avatarContainer.eventMode = 'static';
@@ -286,12 +256,8 @@ export function PixiCanvas({
         sessionKey: session.sessionKey,
         graphic: circle,
         text,
-        arcTrail,
+        activityRing,
         badge,
-        progressDots,
-        progressSpinner,
-        progressBraille,
-        progressBlocks,
         glow,
         container: avatarContainer,
         fullName,
@@ -354,11 +320,16 @@ export function PixiCanvas({
         const activities = activitiesRef.current;
 
         for (const avatar of avatarsRef.current.values()) {
-          // Smooth hover (no breathing/size pulsation)
+          // Breathing
+          const breathAmp = avatar.isSelected ? 0.06 : 0.025;
+          const breathSpeed = avatar.isSelected ? 2.5 : 1.2;
+          const breath = Math.sin(time * breathSpeed + avatar.phase) * breathAmp;
+
+          // Smooth hover
           avatar.currentScale +=
             (avatar.targetScale - avatar.currentScale) * 0.12 * ((dt * 60) / 60);
 
-          avatar.container.scale.set(avatar.currentScale);
+          avatar.container.scale.set(avatar.currentScale + breath);
 
           // Floating drift
           avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
@@ -376,95 +347,24 @@ export function PixiCanvas({
           const isRunning = !!(activity && shouldShowActivity(activity));
 
           if (isRunning) {
-            // ---- Arc trail: ease-out over 200%, wall at anchor ----
-            // Head follows ease-out over 2 full revolutions (720°).
-            // The anchor acts as an invisible wall — when the trail
-            // passes the anchor on the 2nd revolution, that part
-            // disappears.  Only the arc from anchor to head (short
-            // path) is visible.
-            //
-            // Saved alternative — "shrinking circle" effect:
-            //   arcLength = swept <= oneRev ? swept : totalAngle - swept;
-            avatar.arcTrail.alpha = 1;
-            avatar.arcTrail.clear();
-
-            const arcRadius = avatar.radius + 6;
-            const segments = 24;
-            const cycleDuration = 2.5;
-            const totalAngle = Math.PI * 4; // 200% = 2 full revolutions
-            const oneRev = Math.PI * 2; // 360°
-
-            const anchorAngle = avatar.phase;
-            const cycleProgress = ((time + avatar.phase) / cycleDuration) % 1;
-
-            // Ease-out over the full 200% path
-            const eased = 1 - Math.pow(1 - cycleProgress, 2.5);
-            const swept = eased * totalAngle;
-
-            const headAngle = anchorAngle + swept;
-
-            // Wall effect: trail clips at the anchor point.
-            // Phase 1 (0→360°): arc grows from anchor to head.
-            // Phase 2 (360°→720°): trail past the anchor vanishes;
-            //   only the new arc (anchor → head on 2nd lap) is visible.
-            const arcLength = swept <= oneRev ? swept : swept - oneRev;
-
-            if (arcLength > 0.05) {
-              for (let i = 0; i < segments; i++) {
-                const t = i / segments; // 0 = head (bright), 1 = tail (dim)
-                const segStart = headAngle - t * arcLength;
-                const segEnd = headAngle - ((i + 1) / segments) * arcLength;
-                const segAlpha = 1.0 - t * t;
-                const segWidth = 3.5 - t * 2.0;
-
-                avatar.arcTrail.arc(0, 0, arcRadius, segEnd, segStart);
-                avatar.arcTrail.stroke({
-                  color: 0xef4444,
-                  width: Math.max(1, segWidth),
-                  alpha: segAlpha * 0.9,
-                });
-              }
-            }
+            const pulse = 0.5 + Math.sin(time * 6) * 0.5;
+            avatar.activityRing.alpha = pulse;
+            const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
+            avatar.activityRing.scale.set(ringScale);
           } else {
-            avatar.arcTrail.alpha = 0;
+            avatar.activityRing.alpha = 0;
           }
 
-          // ---- Tool badge (no bobbing) ----
+          // ---- Tool badge (driven by live activities ref) ----
           const hasTool = !!(activity?.toolName && isToolBadgeFresh(activity.toolTs));
           if (isRunning && hasTool) {
             const icon = toolIcon(activity!.toolName);
             if (avatar.badge.text !== icon) avatar.badge.text = icon;
             avatar.badge.alpha = 1;
-            avatar.badge.y = avatar.radius + 6;
-
-            // ---- Progress indicator demos (compare side by side) ----
-            const tick = Math.floor(time * 3); // 3 changes per second
-
-            // Style 1: Dots ·  ··  ···
-            const dotCount = (tick % 3) + 1;
-            avatar.progressDots.text = '·'.repeat(dotCount);
-            avatar.progressDots.alpha = 1;
-
-            // Style 2: Spinning quarter ◐ ◓ ◑ ◒
-            const spinChars = '\u25D0\u25D3\u25D1\u25D2';
-            avatar.progressSpinner.text = spinChars[tick % 4]!;
-            avatar.progressSpinner.alpha = 1;
-
-            // Style 3: Braille spinner
-            const braille = '\u280B\u2819\u2839\u2838\u283C\u2834\u2826\u2827\u2807\u280F';
-            avatar.progressBraille.text = braille[tick % braille.length]!;
-            avatar.progressBraille.alpha = 1;
-
-            // Style 4: Block bar ▰▰▱ cycling
-            const blocks = tick % 4;
-            avatar.progressBlocks.text = '\u25B0'.repeat(blocks) + '\u25B1'.repeat(3 - blocks);
-            avatar.progressBlocks.alpha = 1;
+            const bob = Math.sin(time * 2 + avatar.phase) * 2;
+            avatar.badge.y = avatar.radius + 6 + bob;
           } else {
             avatar.badge.alpha = 0;
-            avatar.progressDots.alpha = 0;
-            avatar.progressSpinner.alpha = 0;
-            avatar.progressBraille.alpha = 0;
-            avatar.progressBlocks.alpha = 0;
           }
         }
       });
