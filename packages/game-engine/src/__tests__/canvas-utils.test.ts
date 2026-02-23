@@ -113,7 +113,18 @@ describe('resolveSessionName', () => {
       }),
     );
     expect(result.icon).toBe('\uD83D\uDCAC');
-    expect(result.name).toBe('#openlares channel id:123');
+    expect(result.name).toBe('Guild #openlares channel id:123');
+  });
+
+  it('preserves full discord title with multiple # signs', () => {
+    const result = resolveSessionName(
+      makeSession({
+        sessionKey: 'agent:main:discord:thread:456',
+        title: '#openlares › bug fixes #1',
+      }),
+    );
+    expect(result.icon).toBe('\uD83D\uDCAC');
+    expect(result.name).toBe('#openlares › bug fixes #1');
   });
 
   it('identifies discord without title', () => {
@@ -190,6 +201,46 @@ describe('resolveSessionName', () => {
   it('identifies cron from sessionKey', () => {
     const result = resolveSessionName(makeSession({ sessionKey: 'cron:daily-backup', title: '' }));
     expect(result.icon).toBe('\u23F0');
+  });
+
+  it('shows provider prefix for openai sessions with title', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'agent:main:openai:bright-owl', title: 'bright owl' }),
+    );
+    expect(result.icon).toBe('\uD83C\uDF10');
+    expect(result.name).toBe('openai: bright owl');
+  });
+
+  it('uses friendly name for sessions without title (not raw UUID)', () => {
+    const result = resolveSessionName(
+      makeSession({
+        sessionKey: 'agent:main:openai:e8488174-aac1-45a3-aeae-cdd6c6c7554c',
+        title: '',
+      }),
+    );
+    expect(result.icon).toBe('\uD83C\uDF10');
+    // Should use friendly word pair, not the raw UUID
+    expect(result.name).toMatch(/^openai: \w+ \w+$/);
+  });
+
+  it('shows agent name instead of provider for non-main agents', () => {
+    const result = resolveSessionName(
+      makeSession({
+        sessionKey: 'agent:jobs:openai:e8488174-aac1-45a3-aeae-cdd6c6c7554c',
+        title: '',
+      }),
+    );
+    expect(result.icon).toBe('\uD83C\uDF10');
+    // Agent name 'jobs' is more useful than provider 'openai'
+    expect(result.name).toMatch(/^jobs: \w+ \w+$/);
+  });
+
+  it('shows provider prefix for anthropic sessions', () => {
+    const result = resolveSessionName(
+      makeSession({ sessionKey: 'agent:main:anthropic:session-42', title: 'Research' }),
+    );
+    expect(result.icon).toBe('\uD83C\uDF10');
+    expect(result.name).toBe('anthropic: Research');
   });
 
   it('uses title when available and not a UUID', () => {

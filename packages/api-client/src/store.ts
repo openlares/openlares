@@ -300,26 +300,9 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 
     set({ sessions });
 
-    // Seed activity state for sessions that are currently active
-    // (restores activity indicators after page refresh)
-    const recentCutoff = 2 * 60 * 1000; // 2 minutes
-    const now = Date.now();
-    for (const s of sessions) {
-      const isRecentlyActive = s.active || now - s.updatedAt < recentCutoff;
-      if (isRecentlyActive && !gatewayStore.getState().sessionActivities[s.sessionKey]?.active) {
-        set((state) => ({
-          sessionActivities: {
-            ...state.sessionActivities,
-            [s.sessionKey]: {
-              active: true,
-              startedAt: s.updatedAt || now,
-              endedAt: 0,
-            },
-          },
-        }));
-        startToolPoll(s.sessionKey, client, set);
-      }
-    }
+    // Activity state is NOT seeded here — gateway's sessions.list has no `active` field.
+    // Activity indicators are driven purely by lifecycle events received via WebSocket.
+    // This prevents stale tool badges / rings showing after page refresh.
   },
 
   loadHistory: async (sessionKey) => {
@@ -522,6 +505,21 @@ function normaliseContent(content: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
+// Live session discovery — debounced refresh after new sessions appear
+// ---------------------------------------------------------------------------
+
+let sessionRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Schedule a debounced refreshSessions() call (1s). */
+function scheduleSessionRefresh(): void {
+  if (sessionRefreshTimer) return;
+  sessionRefreshTimer = setTimeout(async () => {
+    sessionRefreshTimer = null;
+    await gatewayStore.getState().refreshSessions();
+  }, 1_000);
+}
+
+// ---------------------------------------------------------------------------
 // Tool activity polling — for sessions without direct tool event subscriptions
 // ---------------------------------------------------------------------------
 
@@ -584,8 +582,9 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
       stopToolPoll(sessionKey);
       return;
     }
-    // Safety: if active for > 5 min, check sessions.list to see if still truly active
-    const staleCutoff = 5 * 60 * 1000;
+    // Safety: if active for > 90s without lifecycle end, assume session finished.
+    // Passive sessions often don't receive lifecycle end events.
+    const staleCutoff = 90 * 1000;
     if (activity.startedAt > 0 && Date.now() - activity.startedAt > staleCutoff) {
       // Mark as ended — lifecycle end was probably missed
       set((state) => ({
@@ -617,8 +616,12 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
         const msgKey = lastMsg
           ? String(lastMsg.id ?? lastMsg.timestamp ?? JSON.stringify(lastMsg))
           : '';
-        if (msgKey && lastSeenPollKey.get(sessionKey) === msgKey) return;
+        const prevKey = lastSeenPollKey.get(sessionKey);
         if (msgKey) lastSeenPollKey.set(sessionKey, msgKey);
+        // First poll establishes baseline — don't show stale badges from old history
+        if (!prevKey) return;
+        // Nothing changed since last poll
+        if (msgKey === prevKey) return;
 
         const toolName = extractLatestToolName(result.messages);
         if (toolName) {
@@ -664,6 +667,10 @@ function stopAllToolPolls(): void {
   }
   directToolEventSessions.clear();
   lastSeenPollKey.clear();
+  if (sessionRefreshTimer) {
+    clearTimeout(sessionRefreshTimer);
+    sessionRefreshTimer = null;
+  }
 }
 
 function wireEvents(client: GatewayClient, set: StoreSetter): void {
@@ -766,12 +773,31 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
     if (payload.stream === 'lifecycle') {
       const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
       if (sk && payload.data.phase === 'start') {
-        set((state) => ({
-          sessionActivities: {
-            ...state.sessionActivities,
-            [sk]: { active: true, startedAt: payload.ts, endedAt: 0 },
-          },
-        }));
+        set((state) => {
+          const exists = state.sessions.some((s) => s.sessionKey === sk);
+          const update: Partial<GatewayState> = {
+            sessionActivities: {
+              ...state.sessionActivities,
+              [sk]: { active: true, startedAt: payload.ts, endedAt: 0 },
+            },
+          };
+          // Live session discovery: add unknown sessions immediately
+          if (!exists) {
+            update.sessions = [
+              ...state.sessions,
+              {
+                sessionKey: sk,
+                title: '',
+                active: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              },
+            ];
+            // Schedule a refresh to pick up the proper title
+            scheduleSessionRefresh();
+          }
+          return update;
+        });
         // Start polling for tool activity if no direct tool events
         startToolPoll(sk, client, set);
       }

@@ -141,8 +141,7 @@ export function resolveSessionName(session: SessionSummary): ResolvedName {
 
   // ---- Channel sources (detected from sessionKey) ----
   if (sessionKey.includes(':discord:')) {
-    const ch = raw.match(/#([^#]+)$/);
-    return { icon: '\uD83D\uDCAC', name: ch ? `#${ch[1]}` : title || 'discord' };
+    return { icon: '\uD83D\uDCAC', name: title || 'discord' };
   }
 
   if (sessionKey.includes(':telegram:')) {
@@ -195,6 +194,20 @@ export function resolveSessionName(session: SessionSummary): ResolvedName {
   }
   if (sessionKey.includes('cron')) {
     return { icon: '\u23F0', name: title || 'cron' };
+  }
+
+  // ---- Generic provider sessions (e.g. agent:main:openai:bright-owl) ----
+  // By this point we've excluded all known messaging sources, hooks, subagents, cron.
+  // Remaining agent sessions are likely API/provider sessions — show provider prefix.
+  const agentParts = sessionKey.split(':');
+  if (agentParts[0] === 'agent' && agentParts.length >= 4) {
+    const agentName = agentParts[1]; // 'main', 'jobs', etc.
+    const provider = agentParts[2]; // 'openai', 'anthropic', etc.
+    // Use agent name when not 'main' (more useful), otherwise show provider
+    const prefix = agentName !== 'main' ? agentName : provider;
+    // Use title if non-empty, otherwise friendly name (not raw UUID)
+    const name = title || friendlyName(sessionKey);
+    return { icon: '\uD83C\uDF10', name: `${prefix}: ${name}` };
   }
 
   // ---- Title available and reasonable ----
