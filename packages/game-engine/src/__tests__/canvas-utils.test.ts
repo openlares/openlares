@@ -211,12 +211,28 @@ describe('resolveSessionName', () => {
     expect(result.name).toBe('openai: bright owl');
   });
 
-  it('shows provider prefix for openai sessions without title', () => {
+  it('uses friendly name for sessions without title (not raw UUID)', () => {
     const result = resolveSessionName(
-      makeSession({ sessionKey: 'agent:main:openai:abc123', title: '' }),
+      makeSession({
+        sessionKey: 'agent:main:openai:e8488174-aac1-45a3-aeae-cdd6c6c7554c',
+        title: '',
+      }),
     );
     expect(result.icon).toBe('\uD83C\uDF10');
-    expect(result.name).toBe('openai: abc123');
+    // Should use friendly word pair, not the raw UUID
+    expect(result.name).toMatch(/^openai: \w+ \w+$/);
+  });
+
+  it('shows agent name instead of provider for non-main agents', () => {
+    const result = resolveSessionName(
+      makeSession({
+        sessionKey: 'agent:jobs:openai:e8488174-aac1-45a3-aeae-cdd6c6c7554c',
+        title: '',
+      }),
+    );
+    expect(result.icon).toBe('\uD83C\uDF10');
+    // Agent name 'jobs' is more useful than provider 'openai'
+    expect(result.name).toMatch(/^jobs: \w+ \w+$/);
   });
 
   it('shows provider prefix for anthropic sessions', () => {

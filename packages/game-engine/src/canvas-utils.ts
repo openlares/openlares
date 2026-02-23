@@ -201,9 +201,13 @@ export function resolveSessionName(session: SessionSummary): ResolvedName {
   // Remaining agent sessions are likely API/provider sessions — show provider prefix.
   const agentParts = sessionKey.split(':');
   if (agentParts[0] === 'agent' && agentParts.length >= 4) {
-    const provider = agentParts[2];
-    const name = title || agentParts.slice(3).join(':') || friendlyName(sessionKey);
-    return { icon: '\uD83C\uDF10', name: `${provider}: ${name}` };
+    const agentName = agentParts[1]; // 'main', 'jobs', etc.
+    const provider = agentParts[2]; // 'openai', 'anthropic', etc.
+    // Use agent name when not 'main' (more useful), otherwise show provider
+    const prefix = agentName !== 'main' ? agentName : provider;
+    // Use title if non-empty, otherwise friendly name (not raw UUID)
+    const name = title || friendlyName(sessionKey);
+    return { icon: '\uD83C\uDF10', name: `${prefix}: ${name}` };
   }
 
   // ---- Title available and reasonable ----

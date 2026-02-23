@@ -599,8 +599,9 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
       stopToolPoll(sessionKey);
       return;
     }
-    // Safety: if active for > 5 min, check sessions.list to see if still truly active
-    const staleCutoff = 5 * 60 * 1000;
+    // Safety: if active for > 90s without lifecycle end, assume session finished.
+    // Passive sessions often don't receive lifecycle end events.
+    const staleCutoff = 90 * 1000;
     if (activity.startedAt > 0 && Date.now() - activity.startedAt > staleCutoff) {
       // Mark as ended — lifecycle end was probably missed
       set((state) => ({
