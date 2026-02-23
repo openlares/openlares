@@ -376,43 +376,36 @@ export function PixiCanvas({
           const isRunning = !!(activity && shouldShowActivity(activity));
 
           if (isRunning) {
-            // ---- Arc trail: constant speed → ease-out with overlap ----
-            // Head runs at full constant speed for one complete revolution,
-            // then continues PAST the anchor with ease-out deceleration
-            // (1.5 total revolutions).  Trail is bright at head, fades
-            // naturally toward the anchor — no artificial fade.
+            // ---- Arc trail: ease-out over 200%, visible cap at 360° ----
+            // Head follows ease-out over 2 full revolutions (720°).
+            // Visible arc is capped at 360° — once the head passes 360°
+            // the tail starts erasing from the anchor.  The tail inherits
+            // the same deceleration since it trails 360° behind the head.
             avatar.arcTrail.alpha = 1;
             avatar.arcTrail.clear();
 
             const arcRadius = avatar.radius + 6;
             const segments = 24;
-            const cycleDuration = 3.0;
-            const constantTimeRatio = 0.55; // 55% of time = full circle at constant speed
-            const constantAngle = Math.PI * 2; // 360°
-            const easeAngle = Math.PI; // extra 180° overlap with deceleration
+            const cycleDuration = 2.5;
+            const totalAngle = Math.PI * 4; // 200% = 2 full revolutions
+            const maxArc = Math.PI * 2; // visible cap = one circle
 
             const anchorAngle = avatar.phase;
             const cycleProgress = ((time + avatar.phase) / cycleDuration) % 1;
 
-            let swept: number;
-            if (cycleProgress < constantTimeRatio) {
-              // Constant speed: 0 → 360°
-              swept = (cycleProgress / constantTimeRatio) * constantAngle;
-            } else {
-              // Ease-out past the anchor: 360° → 540°
-              const easeT =
-                (cycleProgress - constantTimeRatio) / (1 - constantTimeRatio);
-              const eased = 1 - Math.pow(1 - easeT, 2.5);
-              swept = constantAngle + eased * easeAngle;
-            }
+            // Ease-out over the full 200% path
+            const eased = 1 - Math.pow(1 - cycleProgress, 2.5);
+            const swept = eased * totalAngle;
 
             const headAngle = anchorAngle + swept;
+            // Cap visible arc at 360° — tail erases once head exceeds one revolution
+            const arcLength = Math.min(swept, maxArc);
 
-            if (swept > 0.05) {
+            if (arcLength > 0.05) {
               for (let i = 0; i < segments; i++) {
-                const t = i / segments; // 0 = head (bright), 1 = anchor (dim)
-                const segStart = headAngle - t * swept;
-                const segEnd = headAngle - ((i + 1) / segments) * swept;
+                const t = i / segments; // 0 = head (bright), 1 = tail (dim)
+                const segStart = headAngle - t * arcLength;
+                const segEnd = headAngle - ((i + 1) / segments) * arcLength;
                 const segAlpha = 1.0 - t * t;
                 const segWidth = 3.5 - t * 2.0;
 
