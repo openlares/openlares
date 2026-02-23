@@ -30,6 +30,11 @@ interface SessionAvatar {
   /** Traveling arc border animation (n8n-style). */
   arcTrail: Graphics;
   badge: Text;
+  /** Progress indicator demos (for comparison, pick one later). */
+  progressDots: Text;
+  progressSpinner: Text;
+  progressBraille: Text;
+  progressBlocks: Text;
   glow: Graphics;
   container: Graphics;
   fullName: string;
@@ -215,8 +220,34 @@ export function PixiCanvas({
       });
       badge.x = -badge.width / 2;
       badge.y = radius + 6;
-      badge.alpha = 0; // ticker will set this
+      badge.alpha = 0;
       avatarContainer.addChild(badge);
+
+      // ---- Progress indicator demos (shown side by side for comparison) ----
+      const progStyle = { fontSize: 11, fill: 0xffffff, fontFamily: 'monospace' };
+      const progressDots = new Text({ text: '', style: progStyle });
+      progressDots.x = -50;
+      progressDots.y = radius + 28;
+      progressDots.alpha = 0;
+      avatarContainer.addChild(progressDots);
+
+      const progressSpinner = new Text({ text: '', style: progStyle });
+      progressSpinner.x = -20;
+      progressSpinner.y = radius + 28;
+      progressSpinner.alpha = 0;
+      avatarContainer.addChild(progressSpinner);
+
+      const progressBraille = new Text({ text: '', style: progStyle });
+      progressBraille.x = 5;
+      progressBraille.y = radius + 28;
+      progressBraille.alpha = 0;
+      avatarContainer.addChild(progressBraille);
+
+      const progressBlocks = new Text({ text: '', style: progStyle });
+      progressBlocks.x = 25;
+      progressBlocks.y = radius + 28;
+      progressBlocks.alpha = 0;
+      avatarContainer.addChild(progressBlocks);
 
       // ---- Interaction ----
       avatarContainer.eventMode = 'static';
@@ -257,6 +288,10 @@ export function PixiCanvas({
         text,
         arcTrail,
         badge,
+        progressDots,
+        progressSpinner,
+        progressBraille,
+        progressBlocks,
         glow,
         container: avatarContainer,
         fullName,
@@ -341,52 +376,97 @@ export function PixiCanvas({
           const isRunning = !!(activity && shouldShowActivity(activity));
 
           if (isRunning) {
-            // ---- Traveling arc trail (n8n-style comet around border) ----
+            // ---- Traveling arc trail with draw+erase phases ----
             avatar.arcTrail.alpha = 1;
             avatar.arcTrail.clear();
 
             const arcRadius = avatar.radius + 6;
-            const tailLength = Math.PI * 1.5; // ~270° = 75% of circle
-            const segments = 20; // more segments for smoother gradient
-            const revolutionPeriod = 2.0; // seconds per full revolution
+            const fullTrail = Math.PI * 1.5; // 270° = 75% of circle
+            const segments = 20;
+            const cycleDuration = 2.5; // total seconds per cycle
+            const drawRatio = 0.6; // 60% drawing, 40% erasing
+            const drawDuration = cycleDuration * drawRatio;
+            const eraseDuration = cycleDuration * (1 - drawRatio);
 
-            // Ease-out per revolution: fast start, slow finish
-            const rawProgress = ((time + avatar.phase) / revolutionPeriod) % 1.0;
-            // Cubic ease-in-out for smooth acceleration/deceleration
-            const easedProgress =
-              rawProgress < 0.5
-                ? 4 * rawProgress * rawProgress * rawProgress
-                : 1 - Math.pow(-2 * rawProgress + 2, 3) / 2;
-            const headAngle = easedProgress * Math.PI * 2;
+            const cycleTime = (time + avatar.phase) % cycleDuration;
 
-            for (let i = 0; i < segments; i++) {
-              const t = i / segments; // 0=head, 1=tail
-              const segStart = headAngle - t * tailLength;
-              const segEnd = headAngle - ((i + 1) / segments) * tailLength;
-              const segAlpha = 1.0 - t * t; // quadratic fade
-              const segWidth = 3.5 - t * 2.0; // thicker head, thinner tail
+            let headAngle: number;
+            let tailAngle: number;
 
-              avatar.arcTrail.arc(0, 0, arcRadius, segEnd, segStart);
-              avatar.arcTrail.stroke({
-                color: 0xef4444,
-                width: Math.max(1, segWidth),
-                alpha: segAlpha * 0.9,
-              });
+            if (cycleTime < drawDuration) {
+              // Draw phase: head moves at constant speed
+              const drawT = cycleTime / drawDuration;
+              headAngle = drawT * Math.PI * 2;
+              tailAngle = headAngle - fullTrail;
+            } else {
+              // Erase phase: tail catches up with ease-in (slow→fast)
+              // Faded tail lingers, bright head-end erases quickly
+              const eraseT = (cycleTime - drawDuration) / eraseDuration;
+              const easedErase = eraseT * eraseT * eraseT; // cubic ease-in
+              // Head keeps moving slowly (never stops)
+              headAngle = Math.PI * 2 + eraseT * Math.PI * 0.3;
+              // Tail catches up to head
+              const endOfDrawTail = Math.PI * 2 - fullTrail;
+              tailAngle = endOfDrawTail + easedErase * (headAngle - endOfDrawTail);
+            }
+
+            const visibleLength = headAngle - tailAngle;
+            if (visibleLength > 0.02) {
+              for (let i = 0; i < segments; i++) {
+                const t = i / segments; // 0=head, 1=tail
+                const segStart = headAngle - t * visibleLength;
+                const segEnd = headAngle - ((i + 1) / segments) * visibleLength;
+                const segAlpha = 1.0 - t * t; // quadratic fade
+                const segWidth = 3.5 - t * 2.0;
+
+                avatar.arcTrail.arc(0, 0, arcRadius, segEnd, segStart);
+                avatar.arcTrail.stroke({
+                  color: 0xef4444,
+                  width: Math.max(1, segWidth),
+                  alpha: segAlpha * 0.9,
+                });
+              }
             }
           } else {
             avatar.arcTrail.alpha = 0;
           }
 
-          // ---- Tool badge (driven by live activities ref) ----
+          // ---- Tool badge (no bobbing) ----
           const hasTool = !!(activity?.toolName && isToolBadgeFresh(activity.toolTs));
           if (isRunning && hasTool) {
             const icon = toolIcon(activity!.toolName);
             if (avatar.badge.text !== icon) avatar.badge.text = icon;
             avatar.badge.alpha = 1;
-            const bob = Math.sin(time * 2 + avatar.phase) * 2;
-            avatar.badge.y = avatar.radius + 6 + bob;
+            avatar.badge.y = avatar.radius + 6;
+
+            // ---- Progress indicator demos (compare side by side) ----
+            const tick = Math.floor(time * 3); // 3 changes per second
+
+            // Style 1: Dots ·  ··  ···
+            const dotCount = (tick % 3) + 1;
+            avatar.progressDots.text = '·'.repeat(dotCount);
+            avatar.progressDots.alpha = 1;
+
+            // Style 2: Spinning quarter ◐ ◓ ◑ ◒
+            const spinChars = '\u25D0\u25D3\u25D1\u25D2';
+            avatar.progressSpinner.text = spinChars[tick % 4]!;
+            avatar.progressSpinner.alpha = 1;
+
+            // Style 3: Braille spinner
+            const braille = '\u280B\u2819\u2839\u2838\u283C\u2834\u2826\u2827\u2807\u280F';
+            avatar.progressBraille.text = braille[tick % braille.length]!;
+            avatar.progressBraille.alpha = 1;
+
+            // Style 4: Block bar ▰▰▱ cycling
+            const blocks = tick % 4;
+            avatar.progressBlocks.text = '\u25B0'.repeat(blocks) + '\u25B1'.repeat(3 - blocks);
+            avatar.progressBlocks.alpha = 1;
           } else {
             avatar.badge.alpha = 0;
+            avatar.progressDots.alpha = 0;
+            avatar.progressSpinner.alpha = 0;
+            avatar.progressBraille.alpha = 0;
+            avatar.progressBlocks.alpha = 0;
           }
         }
       });
