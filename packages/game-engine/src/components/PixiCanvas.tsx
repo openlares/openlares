@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Application, Graphics, Text } from 'pixi.js';
 
-import type { SessionSummary } from '../canvas-utils';
+import type { SessionSummary, SessionActivityState } from '../canvas-utils';
 import {
   getDisplayName,
   getFullName,
@@ -14,6 +14,8 @@ import {
   toolIcon,
   isToolBadgeFresh,
   generateAvatarPositions,
+  hashCode,
+  seededRandom,
 } from '../canvas-utils';
 
 // ---------------------------------------------------------------------------
@@ -25,19 +27,18 @@ interface SessionAvatar {
   sessionKey: string;
   graphic: Graphics;
   text: Text;
-  activityRing: Graphics | null;
+  activityRing: Graphics;
+  badge: Text;
+  glow: Graphics;
   container: Graphics;
   fullName: string;
   isTruncated: boolean;
-  isRunning: boolean;
   x: number;
   y: number;
   radius: number;
   color: number;
   isSelected: boolean;
   opacity: number;
-  /** Tool emoji badge text (below avatar). */
-  badge: Text | null;
   /** Animation state */
   phase: number;
   driftAngle: number;
@@ -52,6 +53,8 @@ interface SessionAvatar {
 interface PixiCanvasProps {
   sessions: SessionSummary[];
   activeSessionKey: string | null;
+  /** Live per-session activity state (rings & badges driven from this). */
+  sessionActivities: Record<string, SessionActivityState>;
   onSessionClick: (sessionKey: string) => void;
 }
 
@@ -62,36 +65,231 @@ interface PixiCanvasProps {
 /**
  * PixiCanvas \u2014 renders a PixiJS scene with clickable session avatars.
  *
- * Avatars fade over inactivity and disappear after 1 hour.
- * Labels are placed above circles for readability.
- * Truncated names show a tooltip on hover.
+ * Architecture:
+ *  - The PixiJS Application is created ONCE on mount.
+ *  - Avatars are rebuilt when `sessions` or `activeSessionKey` change.
+ *  - Activity rings/badges are driven in the animation ticker by reading
+ *    `sessionActivities` from a ref (no rebuild needed for activity updates).
+ *  - Positions use seeded random for stability across rebuilds.
  */
-export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiCanvasProps) {
+export function PixiCanvas({
+  sessions,
+  activeSessionKey,
+  sessionActivities,
+  onSessionClick,
+}: PixiCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const avatarsRef = useRef<SessionAvatar[]>([]);
+  const appRef = useRef<Application | null>(null);
+  const avatarsRef = useRef<Map<string, SessionAvatar>>(new Map());
+
+  // Refs for data the ticker/handlers read without triggering effects
+  const activitiesRef = useRef(sessionActivities);
+  activitiesRef.current = sessionActivities;
+
+  const onClickRef = useRef(onSessionClick);
+  onClickRef.current = onSessionClick;
+
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+
+  const activeKeyRef = useRef(activeSessionKey);
+  activeKeyRef.current = activeSessionKey;
+
+  // ---- Tooltip helpers (stable) ----
+
+  const showTooltip = useCallback((text: string, x: number, y: number) => {
+    const tip = tooltipRef.current;
+    if (!tip) return;
+    tip.textContent = text;
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
+    tip.style.opacity = '1';
+    tip.style.pointerEvents = 'none';
+  }, []);
+
+  const hideTooltip = useCallback(() => {
+    const tip = tooltipRef.current;
+    if (!tip) return;
+    tip.style.opacity = '0';
+  }, []);
+
+  // ---- Sync avatars: (re)build scene from current data ----
+
+  const syncAvatars = useCallback(() => {
+    const app = appRef.current;
+    if (!app) return;
+
+    // Preserve animation state from previous avatars for continuity
+    const prevAvatars = new Map(avatarsRef.current);
+
+    // Tear down previous avatars
+    for (const av of avatarsRef.current.values()) {
+      app.stage.removeChild(av.container);
+    }
+    avatarsRef.current.clear();
+    hideTooltip();
+
+    const currentSessions = sessionsRef.current;
+    const activeKey = activeKeyRef.current;
+
+    // Keep only sessions inside the active window (+ always the selected one)
+    const visible = currentSessions.filter(
+      (s) => s.sessionKey === activeKey || isWithinActiveWindow(s),
+    );
+
+    if (visible.length === 0) return;
+
+    const positions = generateAvatarPositions(visible.length, app.screen.width, app.screen.height);
+
+    visible.forEach((session, index) => {
+      const pos = positions[index];
+      if (!pos) return;
+
+      const isSelected = session.sessionKey === activeKey;
+      const opacity = getRecencyOpacity(session, isSelected);
+      const color = getSessionColor(session.sessionKey);
+      const radius = 35;
+      const h = hashCode(session.sessionKey);
+
+      const displayName = getDisplayName(session);
+      const fullName = getFullName(session);
+      const isTruncated = displayName !== fullName;
+
+      // Carry over animation state from the previous incarnation
+      const prev = prevAvatars.get(session.sessionKey);
+
+      // Root container
+      const avatarContainer = new Graphics();
+      avatarContainer.x = pos.x;
+      avatarContainer.y = pos.y;
+
+      // ---- Green glow (for very recent, < 5 min) ----
+      const glow = new Graphics();
+      glow.circle(0, 0, radius + 8);
+      glow.fill({ color: 0x10b981, alpha: 0.25 });
+      glow.alpha = !isSelected && opacity >= 1.0 ? 1 : 0;
+      avatarContainer.addChild(glow);
+
+      // ---- Activity ring (always present; visibility driven by ticker) ----
+      const activityRing = new Graphics();
+      activityRing.circle(0, 0, radius + 10);
+      activityRing.stroke({ color: 0x22d3ee, width: 2, alpha: 0.8 });
+      activityRing.alpha = 0; // ticker will set this
+      avatarContainer.addChild(activityRing);
+
+      // ---- Circle ----
+      const circle = new Graphics();
+      if (isSelected) {
+        // Amber selection ring
+        circle.circle(0, 0, radius + 4);
+        circle.fill({ color: 0xf59e0b, alpha: 0.8 });
+        circle.circle(0, 0, radius);
+        circle.fill({ color });
+      } else {
+        circle.circle(0, 0, radius);
+        circle.fill({ color, alpha: opacity });
+      }
+      avatarContainer.addChild(circle);
+
+      // ---- Label (above the circle) ----
+      const text = new Text({
+        text: displayName,
+        style: {
+          fontSize: 11,
+          fill: 0xffffff,
+          fontFamily: 'Arial, sans-serif',
+          align: 'center',
+          wordWrap: true,
+          wordWrapWidth: 110,
+        },
+      });
+      text.alpha = Math.max(0.5, opacity);
+      text.x = -text.width / 2;
+      text.y = -(radius + text.height + 6);
+      avatarContainer.addChild(text);
+
+      // ---- Tool badge (always present; visibility driven by ticker) ----
+      const badge = new Text({
+        text: '\u2699\uFE0F',
+        style: { fontSize: 18, align: 'center' },
+      });
+      badge.x = -badge.width / 2;
+      badge.y = radius + 6;
+      badge.alpha = 0; // ticker will set this
+      avatarContainer.addChild(badge);
+
+      // ---- Interaction ----
+      avatarContainer.eventMode = 'static';
+      avatarContainer.cursor = 'pointer';
+
+      avatarContainer.on('pointerdown', () => {
+        onClickRef.current(session.sessionKey);
+      });
+      avatarContainer.on('pointerenter', () => {
+        const av = avatarsRef.current.get(session.sessionKey);
+        if (av) av.targetScale = 1.15;
+      });
+      avatarContainer.on('pointerleave', () => {
+        const av = avatarsRef.current.get(session.sessionKey);
+        if (av) av.targetScale = 1.0;
+      });
+
+      // Tooltip only on the label text (not the circle)
+      if (isTruncated) {
+        text.eventMode = 'static';
+        text.cursor = 'default';
+        text.on('pointerenter', (e) => {
+          showTooltip(fullName, e.global.x + 12, e.global.y - 8);
+        });
+        text.on('pointermove', (e) => {
+          showTooltip(fullName, e.global.x + 12, e.global.y - 8);
+        });
+        text.on('pointerleave', () => {
+          hideTooltip();
+        });
+      }
+
+      app.stage.addChild(avatarContainer);
+
+      avatarsRef.current.set(session.sessionKey, {
+        sessionKey: session.sessionKey,
+        graphic: circle,
+        text,
+        activityRing,
+        badge,
+        glow,
+        container: avatarContainer,
+        fullName,
+        isTruncated,
+        x: pos.x,
+        y: pos.y,
+        radius,
+        color,
+        isSelected,
+        opacity,
+        // Deterministic animation offsets from session key hash
+        phase: seededRandom(h + 2) * Math.PI * 2,
+        driftSpeed: 0.2 + seededRandom(h + 4) * 0.3,
+        driftRadius: 3 + seededRandom(h + 5) * 5,
+        anchorX: pos.x,
+        anchorY: pos.y,
+        // Carry over live animation state from previous incarnation
+        driftAngle: prev ? prev.driftAngle : seededRandom(h + 3) * Math.PI * 2,
+        currentScale: prev ? prev.currentScale : 1.0,
+        targetScale: prev ? prev.targetScale : 1.0,
+      });
+    });
+  }, [hideTooltip, showTooltip]);
+
+  // ---- Init PixiJS app ONCE on mount ----
 
   useEffect(() => {
     const container = containerRef.current;
-    const tooltip = tooltipRef.current;
-    if (!container || !tooltip) return;
+    if (!container) return;
 
     let destroyed = false;
     const app = new Application();
-
-    function showTooltip(text: string, x: number, y: number) {
-      if (!tooltip) return;
-      tooltip.textContent = text;
-      tooltip.style.left = `${x}px`;
-      tooltip.style.top = `${y}px`;
-      tooltip.style.opacity = '1';
-      tooltip.style.pointerEvents = 'none';
-    }
-
-    function hideTooltip() {
-      if (!tooltip) return;
-      tooltip.style.opacity = '0';
-    }
 
     async function setup() {
       await app.init({
@@ -107,183 +305,21 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
 
       container!.appendChild(app.canvas as HTMLCanvasElement);
       app.stage.eventMode = 'static';
+      appRef.current = app;
 
-      function renderAvatars() {
-        // Tear down previous avatars
-        avatarsRef.current.forEach((av) => app.stage.removeChild(av.container));
-        avatarsRef.current = [];
-        hideTooltip();
+      // Initial sync
+      syncAvatars();
 
-        // Keep only sessions inside the active window (+ always the selected one)
-        const visible = sessions.filter(
-          (s) => s.sessionKey === activeSessionKey || isWithinActiveWindow(s),
-        );
-
-        if (visible.length === 0) return;
-
-        const positions = generateAvatarPositions(
-          visible.length,
-          app.screen.width,
-          app.screen.height,
-        );
-
-        visible.forEach((session, index) => {
-          const pos = positions[index];
-          if (!pos) return;
-
-          const isSelected = session.sessionKey === activeSessionKey;
-          const opacity = getRecencyOpacity(session, isSelected);
-          const color = getSessionColor(session.sessionKey);
-          const radius = 35;
-
-          const displayName = getDisplayName(session);
-          const fullName = getFullName(session);
-          const isTruncated = displayName !== fullName;
-
-          // Root container
-          const avatarContainer = new Graphics();
-          avatarContainer.x = pos.x;
-          avatarContainer.y = pos.y;
-
-          // ---- Circle ----
-          const circle = new Graphics();
-
-          if (isSelected) {
-            // Amber selection ring
-            circle.circle(0, 0, radius + 4);
-            circle.fill({ color: 0xf59e0b, alpha: 0.8 });
-            circle.circle(0, 0, radius);
-            circle.fill({ color });
-          } else {
-            circle.circle(0, 0, radius);
-            circle.fill({ color, alpha: opacity });
-          }
-
-          // Green glow for very recent sessions (< 5 min)
-          if (!isSelected && opacity >= 1.0) {
-            const glow = new Graphics();
-            glow.circle(0, 0, radius + 8);
-            glow.fill({ color: 0x10b981, alpha: 0.25 });
-            avatarContainer.addChild(glow);
-          }
-
-          avatarContainer.addChild(circle);
-
-          // ---- Label (above the circle) ----
-          const text = new Text({
-            text: displayName,
-            style: {
-              fontSize: 11,
-              fill: 0xffffff,
-              fontFamily: 'Arial, sans-serif',
-              align: 'center',
-              wordWrap: true,
-              wordWrapWidth: 110,
-            },
-          });
-          text.alpha = Math.max(0.5, opacity);
-          // Centre horizontally, place above circle
-          text.x = -text.width / 2;
-          text.y = -(radius + text.height + 6);
-          avatarContainer.addChild(text);
-
-          // ---- Activity ring (pulsing outer ring when session is working) ----
-          let activityRing: Graphics | null = null;
-          const isRunning = !!(session.activity && shouldShowActivity(session.activity));
-          if (isRunning) {
-            activityRing = new Graphics();
-            activityRing.circle(0, 0, radius + 10);
-            activityRing.stroke({ color: 0x22d3ee, width: 2, alpha: 0.8 });
-            // Insert behind the main circle
-            avatarContainer.addChildAt(activityRing, 0);
-          }
-
-          // ---- Tool badge (emoji below the circle) ----
-          let badge: Text | null = null;
-          const hasTool = !!(
-            session.activity?.toolName && isToolBadgeFresh(session.activity.toolTs)
-          );
-          if (isRunning && hasTool) {
-            const icon = toolIcon(session.activity!.toolName);
-            badge = new Text({
-              text: icon,
-              style: { fontSize: 18, align: 'center' },
-            });
-            badge.x = -badge.width / 2;
-            badge.y = radius + 6;
-            avatarContainer.addChild(badge);
-          }
-
-          // ---- Interaction ----
-          avatarContainer.eventMode = 'static';
-          avatarContainer.cursor = 'pointer';
-
-          avatarContainer.on('pointerdown', () => {
-            onSessionClick(session.sessionKey);
-          });
-          avatarContainer.on('pointerenter', () => {
-            const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
-            if (av) av.targetScale = 1.15;
-          });
-          avatarContainer.on('pointerleave', () => {
-            const av = avatarsRef.current.find((a) => a.sessionKey === session.sessionKey);
-            if (av) av.targetScale = 1.0;
-          });
-
-          // Tooltip only on the label text (not the circle)
-          if (isTruncated) {
-            text.eventMode = 'static';
-            text.cursor = 'default';
-            text.on('pointerenter', (e) => {
-              showTooltip(fullName, e.global.x + 12, e.global.y - 8);
-            });
-            text.on('pointermove', (e) => {
-              showTooltip(fullName, e.global.x + 12, e.global.y - 8);
-            });
-            text.on('pointerleave', () => {
-              hideTooltip();
-            });
-          }
-
-          app.stage.addChild(avatarContainer);
-
-          avatarsRef.current.push({
-            sessionKey: session.sessionKey,
-            graphic: circle,
-            text,
-            activityRing,
-            container: avatarContainer,
-            fullName,
-            isTruncated,
-            isRunning,
-            badge,
-            x: pos.x,
-            y: pos.y,
-            radius,
-            color,
-            isSelected,
-            opacity,
-            phase: Math.random() * Math.PI * 2,
-            driftAngle: Math.random() * Math.PI * 2,
-            driftSpeed: 0.2 + Math.random() * 0.3,
-            driftRadius: 3 + Math.random() * 5,
-            anchorX: pos.x,
-            anchorY: pos.y,
-            targetScale: 1.0,
-            currentScale: 1.0,
-          });
-        });
-      }
-
-      renderAvatars();
-      app.renderer.on('resize', renderAvatars);
+      // Re-sync on resize
+      app.renderer.on('resize', syncAvatars);
 
       // ----- Animation loop -----
       app.ticker.add((ticker) => {
         const time = app.ticker.lastTime / 1000;
         const dt = ticker.deltaTime / 60;
+        const activities = activitiesRef.current;
 
-        for (const avatar of avatarsRef.current) {
+        for (const avatar of avatarsRef.current.values()) {
           // Breathing
           const breathAmp = avatar.isSelected ? 0.06 : 0.025;
           const breathSpeed = avatar.isSelected ? 2.5 : 1.2;
@@ -306,21 +342,29 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
             avatar.graphic.alpha = 0.6 + Math.sin(time * 3 + avatar.phase) * 0.3;
           }
 
-          // Activity ring: fast pulse while running, fade when done
-          if (avatar.activityRing) {
-            if (avatar.isRunning) {
-              const pulse = 0.5 + Math.sin(time * 6) * 0.5;
-              avatar.activityRing.alpha = pulse;
-              // Scale ring slightly for breathing effect
-              const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
-              avatar.activityRing.scale.set(ringScale);
-            }
+          // ---- Activity ring (driven by live activities ref) ----
+          const activity = activities[avatar.sessionKey];
+          const isRunning = !!(activity && shouldShowActivity(activity));
+
+          if (isRunning) {
+            const pulse = 0.5 + Math.sin(time * 6) * 0.5;
+            avatar.activityRing.alpha = pulse;
+            const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
+            avatar.activityRing.scale.set(ringScale);
+          } else {
+            avatar.activityRing.alpha = 0;
           }
 
-          // Tool badge: gentle bob animation
-          if (avatar.badge) {
+          // ---- Tool badge (driven by live activities ref) ----
+          const hasTool = !!(activity?.toolName && isToolBadgeFresh(activity.toolTs));
+          if (isRunning && hasTool) {
+            const icon = toolIcon(activity!.toolName);
+            if (avatar.badge.text !== icon) avatar.badge.text = icon;
+            avatar.badge.alpha = 1;
             const bob = Math.sin(time * 2 + avatar.phase) * 2;
             avatar.badge.y = avatar.radius + 6 + bob;
+          } else {
+            avatar.badge.alpha = 0;
           }
         }
       });
@@ -330,6 +374,7 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
 
     return () => {
       destroyed = true;
+      appRef.current = null;
       hideTooltip();
       try {
         app.destroy(true, { children: true });
@@ -337,7 +382,13 @@ export function PixiCanvas({ sessions, activeSessionKey, onSessionClick }: PixiC
         // Ignore
       }
     };
-  }, [sessions, activeSessionKey, onSessionClick]);
+  }, [syncAvatars, hideTooltip]); // syncAvatars + hideTooltip are stable (useCallback with [] deps)
+
+  // ---- Re-sync avatars when session data or selection changes ----
+
+  useEffect(() => {
+    syncAvatars();
+  }, [sessions, activeSessionKey, syncAvatars]);
 
   return (
     <div

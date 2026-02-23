@@ -227,6 +227,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     if (client) {
       client.disconnect();
     }
+    stopAllToolPolls();
     set({
       client: null,
       connectionStatus: 'disconnected',
@@ -298,6 +299,27 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     }));
 
     set({ sessions });
+
+    // Seed activity state for sessions that are currently active
+    // (restores activity indicators after page refresh)
+    const recentCutoff = 2 * 60 * 1000; // 2 minutes
+    const now = Date.now();
+    for (const s of sessions) {
+      const isRecentlyActive = s.active || now - s.updatedAt < recentCutoff;
+      if (isRecentlyActive && !gatewayStore.getState().sessionActivities[s.sessionKey]?.active) {
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [s.sessionKey]: {
+              active: true,
+              startedAt: s.updatedAt || now,
+              endedAt: 0,
+            },
+          },
+        }));
+        startToolPoll(s.sessionKey, client, set);
+      }
+    }
   },
 
   loadHistory: async (sessionKey) => {
@@ -499,6 +521,127 @@ function normaliseContent(content: unknown): string {
   return String(content ?? '');
 }
 
+// ---------------------------------------------------------------------------
+// Tool activity polling — for sessions without direct tool event subscriptions
+// ---------------------------------------------------------------------------
+
+/** Interval handles for active tool polling. */
+const toolPollIntervals = new Map<string, ReturnType<typeof setInterval>>();
+
+/** Sessions that receive direct tool events (via chat.send caps). */
+const directToolEventSessions = new Set<string>();
+
+/** Polling interval in ms. */
+const TOOL_POLL_INTERVAL_MS = 2_000;
+
+/**
+ * Extract the latest tool name from chat history messages.
+ * Scans from end to beginning, returns the first tool_use name found.
+ */
+export function extractLatestToolName(messages: unknown[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i] as { content?: unknown };
+    if (!msg?.content) continue;
+
+    // Content can be an array of blocks or a string
+    if (Array.isArray(msg.content)) {
+      for (let j = msg.content.length - 1; j >= 0; j--) {
+        const block = msg.content[j] as { type?: string; name?: string };
+        if (
+          block?.type &&
+          ['toolcall', 'tool_call', 'tooluse', 'tool_use'].includes(block.type.toLowerCase()) &&
+          typeof block.name === 'string'
+        ) {
+          return block.name;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Start polling chat.history for a session's tool activity. */
+function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSetter): void {
+  if (toolPollIntervals.has(sessionKey)) return; // already polling
+  if (directToolEventSessions.has(sessionKey)) return; // has direct events
+
+  const poll = async () => {
+    // Stop if session is no longer active or stale (no lifecycle end received)
+    const activity = gatewayStore.getState().sessionActivities[sessionKey];
+    if (!activity?.active) {
+      stopToolPoll(sessionKey);
+      return;
+    }
+    // Safety: if active for > 5 min, check sessions.list to see if still truly active
+    const staleCutoff = 5 * 60 * 1000;
+    if (activity.startedAt > 0 && Date.now() - activity.startedAt > staleCutoff) {
+      // Mark as ended — lifecycle end was probably missed
+      set((state) => ({
+        sessionActivities: {
+          ...state.sessionActivities,
+          [sessionKey]: {
+            ...state.sessionActivities[sessionKey],
+            active: false,
+            startedAt: state.sessionActivities[sessionKey]?.startedAt ?? 0,
+            endedAt: Date.now(),
+          },
+        },
+      }));
+      stopToolPoll(sessionKey);
+      return;
+    }
+
+    try {
+      const result = (await client.request('chat.history', {
+        sessionKey,
+        limit: 2,
+      })) as { messages?: unknown[] };
+
+      if (result?.messages && Array.isArray(result.messages)) {
+        const toolName = extractLatestToolName(result.messages);
+        if (toolName) {
+          set((state) => ({
+            sessionActivities: {
+              ...state.sessionActivities,
+              [sessionKey]: {
+                ...state.sessionActivities[sessionKey],
+                active: state.sessionActivities[sessionKey]?.active ?? true,
+                startedAt: state.sessionActivities[sessionKey]?.startedAt ?? Date.now(),
+                endedAt: state.sessionActivities[sessionKey]?.endedAt ?? 0,
+                toolName,
+                toolTs: Date.now(),
+              },
+            },
+          }));
+        }
+      }
+    } catch {
+      // Ignore poll errors — session may have ended
+    }
+  };
+
+  // Poll immediately, then on interval
+  poll();
+  toolPollIntervals.set(sessionKey, setInterval(poll, TOOL_POLL_INTERVAL_MS));
+}
+
+/** Stop polling for a session. */
+function stopToolPoll(sessionKey: string): void {
+  const interval = toolPollIntervals.get(sessionKey);
+  if (interval) {
+    clearInterval(interval);
+    toolPollIntervals.delete(sessionKey);
+  }
+}
+
+/** Stop all active polls (e.g. on disconnect). */
+function stopAllToolPolls(): void {
+  for (const [sk] of toolPollIntervals) {
+    stopToolPoll(sk);
+  }
+  directToolEventSessions.clear();
+}
+
 function wireEvents(client: GatewayClient, set: StoreSetter): void {
   // Chat streaming events
   client.on('chat', (raw) => {
@@ -605,6 +748,8 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
             [sk]: { active: true, startedAt: payload.ts, endedAt: 0 },
           },
         }));
+        // Start polling for tool activity if no direct tool events
+        startToolPoll(sk, client, set);
       }
       if (sk && payload.data.phase === 'end') {
         set((state) => ({
@@ -617,13 +762,17 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
             },
           },
         }));
+        stopToolPoll(sk);
       }
     }
 
-    // Track per-session tool names from tool events
+    // Track per-session tool names from tool events (direct path)
     if (payload.stream === 'tool' && payload.data.phase === 'start' && payload.data.name) {
       const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
       if (sk) {
+        // Mark as having direct tool events — stop polling
+        directToolEventSessions.add(sk);
+        stopToolPoll(sk);
         set((state) => ({
           sessionActivities: {
             ...state.sessionActivities,

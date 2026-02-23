@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   hashCode,
+  seededRandom,
   shouldShowActivity,
   toolIcon,
   isToolBadgeFresh,
@@ -48,6 +49,34 @@ describe('hashCode', () => {
 
   it('produces different hashes for different inputs', () => {
     expect(hashCode('alpha')).not.toBe(hashCode('beta'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// seededRandom
+// ---------------------------------------------------------------------------
+
+describe('seededRandom', () => {
+  it('returns a value in [0, 1)', () => {
+    for (let i = 0; i < 100; i++) {
+      const val = seededRandom(i);
+      expect(val).toBeGreaterThanOrEqual(0);
+      expect(val).toBeLessThan(1);
+    }
+  });
+
+  it('is deterministic for the same seed', () => {
+    expect(seededRandom(42)).toBe(seededRandom(42));
+    expect(seededRandom(999)).toBe(seededRandom(999));
+  });
+
+  it('produces different values for different seeds', () => {
+    const values = new Set<number>();
+    for (let i = 0; i < 20; i++) {
+      values.add(seededRandom(i));
+    }
+    // At least 15 unique values out of 20 (allowing some rare collisions)
+    expect(values.size).toBeGreaterThan(15);
   });
 });
 
@@ -366,6 +395,12 @@ describe('generateAvatarPositions', () => {
       expect(pos.y).toBeGreaterThanOrEqual(80);
     }
   });
+
+  it('returns deterministic positions for the same inputs', () => {
+    const a = generateAvatarPositions(5, 800, 600);
+    const b = generateAvatarPositions(5, 800, 600);
+    expect(a).toEqual(b);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -374,44 +409,44 @@ describe('generateAvatarPositions', () => {
 
 describe('toolIcon', () => {
   it('returns wrench for exec', () => {
-    expect(toolIcon('exec')).toBe('🔧');
+    expect(toolIcon('exec')).toBe('\uD83D\uDD27');
   });
 
   it('returns wrench for bash (alias)', () => {
-    expect(toolIcon('bash')).toBe('🔧');
+    expect(toolIcon('bash')).toBe('\uD83D\uDD27');
   });
 
   it('returns book for read', () => {
-    expect(toolIcon('read')).toBe('📖');
+    expect(toolIcon('read')).toBe('\uD83D\uDCD6');
   });
 
   it('returns pencil for write', () => {
-    expect(toolIcon('write')).toBe('✏️');
+    expect(toolIcon('write')).toBe('\u270F\uFE0F');
   });
 
   it('returns pencil for edit', () => {
-    expect(toolIcon('edit')).toBe('✏️');
+    expect(toolIcon('edit')).toBe('\u270F\uFE0F');
   });
 
   it('returns globe for web_search', () => {
-    expect(toolIcon('web_search')).toBe('🌐');
+    expect(toolIcon('web_search')).toBe('\uD83C\uDF10');
   });
 
   it('returns brain for memory_search', () => {
-    expect(toolIcon('memory_search')).toBe('🧠');
+    expect(toolIcon('memory_search')).toBe('\uD83E\uDDE0');
   });
 
   it('returns gear for unknown tools', () => {
-    expect(toolIcon('some_custom_tool')).toBe('⚙️');
+    expect(toolIcon('some_custom_tool')).toBe('\u2699\uFE0F');
   });
 
   it('returns gear for undefined', () => {
-    expect(toolIcon(undefined)).toBe('⚙️');
+    expect(toolIcon(undefined)).toBe('\u2699\uFE0F');
   });
 
   it('is case-insensitive', () => {
-    expect(toolIcon('EXEC')).toBe('🔧');
-    expect(toolIcon('Web_Search')).toBe('🌐');
+    expect(toolIcon('EXEC')).toBe('\uD83D\uDD27');
+    expect(toolIcon('Web_Search')).toBe('\uD83C\uDF10');
   });
 });
 

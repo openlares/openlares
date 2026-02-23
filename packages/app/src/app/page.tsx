@@ -1,25 +1,23 @@
 'use client';
 
+import { useCallback } from 'react';
 import Link from 'next/link';
 import { PixiCanvas } from '@openlares/game-engine';
 import { useGatewayStore } from '@openlares/api-client';
 
 export default function Home() {
   const connectionStatus = useGatewayStore((s) => s.connectionStatus);
-  const rawSessions = useGatewayStore((s) => s.sessions);
+  const sessions = useGatewayStore((s) => s.sessions);
   const sessionActivities = useGatewayStore((s) => s.sessionActivities);
   const activeSessionKey = useGatewayStore((s) => s.activeSessionKey);
   const selectSession = useGatewayStore((s) => s.selectSession);
 
-  // Merge per-session activity into session summaries for the canvas
-  const sessions = rawSessions.map((s) => {
-    const activity = sessionActivities[s.sessionKey];
-    return activity ? { ...s, activity } : s;
-  });
-
-  const handleSessionClick = (sessionKey: string) => {
-    selectSession(sessionKey);
-  };
+  const handleSessionClick = useCallback(
+    (sessionKey: string) => {
+      selectSession(sessionKey);
+    },
+    [selectSession],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -39,6 +37,7 @@ export default function Home() {
         <PixiCanvas
           sessions={sessions}
           activeSessionKey={activeSessionKey}
+          sessionActivities={sessionActivities}
           onSessionClick={handleSessionClick}
         />
       )}

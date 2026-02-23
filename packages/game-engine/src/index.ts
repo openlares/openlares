@@ -6,7 +6,7 @@
  */
 
 export { PixiCanvas } from './components/PixiCanvas';
-export type { SessionSummary } from './canvas-utils';
+export type { SessionSummary, SessionActivityState } from './canvas-utils';
 export {
   resolveSessionName,
   getDisplayName,
@@ -21,4 +21,5 @@ export {
   ACTIVITY_LINGER_MS,
   friendlyName,
   hashCode,
+  seededRandom,
 } from './canvas-utils';
