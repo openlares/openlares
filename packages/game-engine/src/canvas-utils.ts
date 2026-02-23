@@ -8,19 +8,36 @@
 // Types
 // ---------------------------------------------------------------------------
 
+/** Activity state for a session (used by canvas badges & rings). */
+export interface SessionActivityState {
+  active: boolean;
+  startedAt: number;
+  endedAt: number;
+  toolName?: string;
+  toolTs?: number;
+}
+
 export interface SessionSummary {
   sessionKey: string;
   title?: string;
   active: boolean;
   updatedAt: number;
   /** Live activity state (for canvas badges). */
-  activity?: {
-    active: boolean;
-    startedAt: number;
-    endedAt: number;
-    toolName?: string;
-    toolTs?: number;
-  };
+  activity?: SessionActivityState;
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic pseudo-random
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic pseudo-random number in [0, 1) from an integer seed.
+ * Same seed always returns the same value. Used for stable avatar
+ * positions and animation offsets so the canvas doesn't jump on rebuild.
+ */
+export function seededRandom(seed: number): number {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453123;
+  return x - Math.floor(x);
 }
 
 // ---------------------------------------------------------------------------
@@ -248,44 +265,44 @@ export const TOOL_BADGE_TTL_MS = 30_000;
 
 /** Map a tool name to an emoji icon for the activity badge. */
 export function toolIcon(name: string | undefined): string {
-  if (!name) return '⚙️'; // gear
+  if (!name) return '\u2699\uFE0F'; // gear
   switch (name.toLowerCase()) {
     case 'exec':
     case 'bash':
     case 'process':
-      return '🔧'; // wrench
+      return '\uD83D\uDD27'; // wrench
     case 'read':
-      return '📖'; // book
+      return '\uD83D\uDCD6'; // book
     case 'write':
     case 'edit':
-      return '✏️'; // pencil
+      return '\u270F\uFE0F'; // pencil
     case 'web_search':
-      return '🌐'; // globe
+      return '\uD83C\uDF10'; // globe
     case 'web_fetch':
-      return '📥'; // inbox
+      return '\uD83D\uDCE5'; // inbox
     case 'browser':
-      return '🖥️'; // desktop
+      return '\uD83D\uDDA5\uFE0F'; // desktop
     case 'message':
     case 'discord':
     case 'slack':
-      return '💬'; // speech
+      return '\uD83D\uDCAC'; // speech
     case 'memory_search':
     case 'memory_get':
-      return '🧠'; // brain
+      return '\uD83E\uDDE0'; // brain
     case 'image':
-      return '🖼️'; // frame
+      return '\uD83D\uDDBC\uFE0F'; // frame
     case 'tts':
-      return '🔊'; // speaker
+      return '\uD83D\uDD0A'; // speaker
     case 'nodes':
-      return '📱'; // phone
+      return '\uD83D\uDCF1'; // phone
     case 'canvas':
-      return '🎨'; // palette
+      return '\uD83C\uDFA8'; // palette
     case 'sessions_spawn':
     case 'sessions_send':
     case 'subagents':
-      return '🤖'; // robot
+      return '\uD83E\uDD16'; // robot
     default:
-      return '⚙️'; // gear
+      return '\u2699\uFE0F'; // gear
   }
 }
 
@@ -340,6 +357,12 @@ export function isWithinActiveWindow(session: SessionSummary): boolean {
 // Layout
 // ---------------------------------------------------------------------------
 
+/**
+ * Generate deterministic avatar positions on a grid.
+ *
+ * Uses seeded random offsets (based on array index) so positions are
+ * stable across rebuilds — no Math.random() means no jitter.
+ */
 export function generateAvatarPositions(
   count: number,
   width: number,
@@ -355,8 +378,8 @@ export function generateAvatarPositions(
     const row = Math.floor(i / cols);
     const baseX = margin + col * minSpacing;
     const baseY = margin + row * minSpacing;
-    const offsetX = (Math.random() - 0.5) * 30;
-    const offsetY = (Math.random() - 0.5) * 30;
+    const offsetX = (seededRandom(i * 2 + 1) - 0.5) * 30;
+    const offsetY = (seededRandom(i * 2 + 2) - 0.5) * 30;
 
     positions.push({
       x: Math.max(margin, Math.min(width - margin, baseX + offsetX)),

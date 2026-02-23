@@ -531,7 +531,7 @@ const toolPollIntervals = new Map<string, ReturnType<typeof setInterval>>();
 const directToolEventSessions = new Set<string>();
 
 /** Polling interval in ms. */
-const TOOL_POLL_INTERVAL_MS = 2_000;
+const TOOL_POLL_INTERVAL_MS = 5_000;
 
 /**
  * Extract the latest tool name from chat history messages.
