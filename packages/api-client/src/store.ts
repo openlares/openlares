@@ -300,19 +300,16 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 
     set({ sessions });
 
-    // Seed activity state for sessions that are currently active
-    // (restores activity indicators after page refresh)
-    const recentCutoff = 2 * 60 * 1000; // 2 minutes
-    const now = Date.now();
+    // Seed activity state only for sessions the gateway reports as currently running.
+    // Don't use time-based heuristics — they cause false positives after page refresh.
     for (const s of sessions) {
-      const isRecentlyActive = s.active || now - s.updatedAt < recentCutoff;
-      if (isRecentlyActive && !gatewayStore.getState().sessionActivities[s.sessionKey]?.active) {
+      if (s.active && !gatewayStore.getState().sessionActivities[s.sessionKey]?.active) {
         set((state) => ({
           sessionActivities: {
             ...state.sessionActivities,
             [s.sessionKey]: {
               active: true,
-              startedAt: s.updatedAt || now,
+              startedAt: s.updatedAt || Date.now(),
               endedAt: 0,
             },
           },
