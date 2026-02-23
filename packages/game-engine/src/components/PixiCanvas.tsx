@@ -376,11 +376,15 @@ export function PixiCanvas({
           const isRunning = !!(activity && shouldShowActivity(activity));
 
           if (isRunning) {
-            // ---- Arc trail: ease-out over 200%, tail catches up ----
+            // ---- Arc trail: ease-out over 200%, wall at anchor ----
             // Head follows ease-out over 2 full revolutions (720°).
-            // Phase 1 (0°→360°): arc GROWS from anchor to head.
-            // Phase 2 (360°→720°): arc SHRINKS — tail catches up to the
-            // decelerating head, erasing the trail naturally.
+            // The anchor acts as an invisible wall — when the trail
+            // passes the anchor on the 2nd revolution, that part
+            // disappears.  Only the arc from anchor to head (short
+            // path) is visible.
+            //
+            // Saved alternative — "shrinking circle" effect:
+            //   arcLength = swept <= oneRev ? swept : totalAngle - swept;
             avatar.arcTrail.alpha = 1;
             avatar.arcTrail.clear();
 
@@ -388,7 +392,7 @@ export function PixiCanvas({
             const segments = 24;
             const cycleDuration = 2.5;
             const totalAngle = Math.PI * 4; // 200% = 2 full revolutions
-            const halfAngle = Math.PI * 2; // 360° = phase boundary
+            const oneRev = Math.PI * 2; // 360°
 
             const anchorAngle = avatar.phase;
             const cycleProgress = ((time + avatar.phase) / cycleDuration) % 1;
@@ -399,10 +403,11 @@ export function PixiCanvas({
 
             const headAngle = anchorAngle + swept;
 
-            // Phase 1: arc grows (0 → 360°)
-            // Phase 2: arc shrinks (360° → 0°) — tail catches the head
-            const arcLength =
-              swept <= halfAngle ? swept : totalAngle - swept;
+            // Wall effect: trail clips at the anchor point.
+            // Phase 1 (0→360°): arc grows from anchor to head.
+            // Phase 2 (360°→720°): trail past the anchor vanishes;
+            //   only the new arc (anchor → head on 2nd lap) is visible.
+            const arcLength = swept <= oneRev ? swept : swept - oneRev;
 
             if (arcLength > 0.05) {
               for (let i = 0; i < segments; i++) {
