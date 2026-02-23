@@ -140,11 +140,7 @@ export function PixiCanvas({
 
     if (visible.length === 0) return;
 
-    const positions = generateAvatarPositions(
-      visible.length,
-      app.screen.width,
-      app.screen.height,
-    );
+    const positions = generateAvatarPositions(visible.length, app.screen.width, app.screen.height);
 
     visible.forEach((session, index) => {
       const pos = positions[index];
@@ -337,11 +333,9 @@ export function PixiCanvas({
 
           // Floating drift
           avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
-          avatar.container.x =
-            avatar.anchorX + Math.cos(avatar.driftAngle) * avatar.driftRadius;
+          avatar.container.x = avatar.anchorX + Math.cos(avatar.driftAngle) * avatar.driftRadius;
           avatar.container.y =
-            avatar.anchorY +
-            Math.sin(avatar.driftAngle * 0.7 + avatar.phase) * avatar.driftRadius;
+            avatar.anchorY + Math.sin(avatar.driftAngle * 0.7 + avatar.phase) * avatar.driftRadius;
 
           // Active: pulsing glow
           if (avatar.isSelected) {
@@ -362,9 +356,7 @@ export function PixiCanvas({
           }
 
           // ---- Tool badge (driven by live activities ref) ----
-          const hasTool = !!(
-            activity?.toolName && isToolBadgeFresh(activity.toolTs)
-          );
+          const hasTool = !!(activity?.toolName && isToolBadgeFresh(activity.toolTs));
           if (isRunning && hasTool) {
             const icon = toolIcon(activity!.toolName);
             if (avatar.badge.text !== icon) avatar.badge.text = icon;
