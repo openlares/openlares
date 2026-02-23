@@ -298,34 +298,21 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 
     set({ sessions });
 
-    // Seed activity state for sessions marked active by the gateway.
-    // This ensures cyan rings appear after page refresh for running sessions.
-    const currentActivities = get().sessionActivities;
-    const seeded: Record<string, SessionActivity> = { ...currentActivities };
-    for (const s of sessions) {
-      if (s.active && !currentActivities[s.sessionKey]?.active) {
-        seeded[s.sessionKey] = {
-          active: true,
-          startedAt: Date.now(), // Use now, not updatedAt — avoids 90s stale cutoff killing poll
-          endedAt: 0,
-        };
-      }
-    }
-    set({ sessionActivities: seeded });
-
-    // Start tool polling for seeded active sessions (lifecycle start
-    // events won't replay after page refresh, so we kick off polls here).
+    // Probe recently-updated sessions for in-progress tool activity.
+    // Gateway sessions.list doesn't report running state, so we check
+    // chat.history for recent tool calls to seed activity indicators
+    // after page refresh.
     const gwClient = get().client;
-    const seededKeys = sessions.filter(s => s.active && !currentActivities[s.sessionKey]?.active);
-    console.log('[refresh-seed] sessions:', sessions.length,
-      'active:', sessions.filter(s => s.active).length,
-      'newly seeded:', seededKeys.length,
-      'client:', !!gwClient,
-      seededKeys.map(s => s.sessionKey));
     if (gwClient) {
-      for (const s of seededKeys) {
-        console.log('[refresh-seed] starting poll for', s.sessionKey);
-        startToolPoll(s.sessionKey, gwClient, set);
+      const now = Date.now();
+      const recentCutoff = 2 * 60 * 1000; // 2 minutes
+      const recentSessions = sessions.filter(
+        (s) => s.updatedAt && now - s.updatedAt < recentCutoff
+      );
+      for (const s of recentSessions) {
+        // Skip sessions that already have activity state
+        if (get().sessionActivities[s.sessionKey]?.active) continue;
+        probeSessionActivity(s.sessionKey, gwClient, set);
       }
     }
   },
@@ -596,6 +583,58 @@ export function extractLatestToolName(messages: unknown[]): string | undefined {
 }
 
 /** Start polling chat.history for a session's tool activity. */
+/**
+ * Probe a session via chat.history to detect in-progress tool activity.
+ * Used after page refresh to seed activity state when the gateway doesn't
+ * replay lifecycle events for already-running sessions.
+ */
+async function probeSessionActivity(
+  sessionKey: string,
+  client: GatewayClient,
+  set: StoreSetter,
+): Promise<void> {
+  try {
+    const result = (await client.request('chat.history', {
+      sessionKey,
+      limit: 3,
+    })) as { messages?: unknown[] };
+
+    if (!result?.messages?.length) return;
+
+    const toolName = extractLatestToolName(result.messages);
+    if (!toolName) return;
+
+    // Check if the last message is a final assistant text (session finished)
+    const lastMsg = result.messages[result.messages.length - 1] as Record<string, unknown>;
+    if (lastMsg?.role === 'assistant' && !Array.isArray(lastMsg.content)) return;
+    if (lastMsg?.role === 'assistant' && Array.isArray(lastMsg.content)) {
+      const hasOnlyText = (lastMsg.content as { type?: string }[]).every(
+        (b) => b.type === 'text'
+      );
+      if (hasOnlyText) return; // Session finished with a text response
+    }
+
+    // Session has recent tool activity and no final text response — likely still running
+    set((state) => ({
+      sessionActivities: {
+        ...state.sessionActivities,
+        [sessionKey]: {
+          active: true,
+          startedAt: Date.now(),
+          endedAt: 0,
+          toolName,
+          toolTs: Date.now(),
+        },
+      },
+    }));
+
+    // Start polling for ongoing tool updates
+    startToolPoll(sessionKey, client, set);
+  } catch {
+    // Best-effort — don't break page load if a probe fails
+  }
+}
+
 function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSetter): void {
   if (toolPollIntervals.has(sessionKey)) return; // already polling
   if (directToolEventSessions.has(sessionKey)) return; // has direct events
