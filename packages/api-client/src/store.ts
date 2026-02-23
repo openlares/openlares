@@ -683,22 +683,21 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
         // Nothing changed since last poll (skip only if we have a baseline)
         if (prevKey && msgKey === prevKey) return;
 
+        // New messages detected — refresh the stale timer so long-running
+        // sessions aren't killed while still actively producing output.
         const toolName = extractLatestToolName(result.messages);
-        if (toolName) {
-          set((state) => ({
-            sessionActivities: {
-              ...state.sessionActivities,
-              [sessionKey]: {
-                ...state.sessionActivities[sessionKey],
-                active: state.sessionActivities[sessionKey]?.active ?? true,
-                startedAt: state.sessionActivities[sessionKey]?.startedAt ?? Date.now(),
-                endedAt: state.sessionActivities[sessionKey]?.endedAt ?? 0,
-                toolName,
-                toolTs: Date.now(),
-              },
+        set((state) => ({
+          sessionActivities: {
+            ...state.sessionActivities,
+            [sessionKey]: {
+              ...state.sessionActivities[sessionKey],
+              active: state.sessionActivities[sessionKey]?.active ?? true,
+              startedAt: Date.now(),
+              endedAt: state.sessionActivities[sessionKey]?.endedAt ?? 0,
+              ...(toolName ? { toolName, toolTs: Date.now() } : {}),
             },
-          }));
-        }
+          },
+        }));
       }
     } catch {
       // Ignore poll errors — session may have ended

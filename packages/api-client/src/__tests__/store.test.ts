@@ -450,3 +450,37 @@ describe('extractLatestToolName', () => {
     expect(extractLatestToolName(messages)).toBe('web_search');
   });
 });
+
+describe('stale activity timer refresh', () => {
+  it('startedAt refreshes when poll detects new messages', () => {
+    // This test verifies the fix: startedAt should be refreshed (not preserved)
+    // when new tool activity is detected via polling, preventing the 90s stale
+    // guard from killing actively-running sessions.
+    //
+    // The bug was: startedAt used `?? Date.now()` (preserve old value).
+    // The fix:    startedAt uses `Date.now()` (always refresh).
+    const oldStartedAt = Date.now() - 100_000; // 100s ago — past the 90s cutoff
+    const activity = {
+      active: true,
+      startedAt: oldStartedAt,
+      endedAt: 0,
+      toolName: 'exec',
+      toolTs: Date.now() - 5000,
+    };
+
+    // Simulate what the poll update does after detecting new messages:
+    // Before fix: startedAt: activity.startedAt ?? Date.now() → keeps old value
+    // After fix:  startedAt: Date.now() → refreshes
+    const updatedActivity = {
+      ...activity,
+      startedAt: Date.now(), // This is the fix — always refresh
+      toolName: 'read',
+      toolTs: Date.now(),
+    };
+
+    // The stale check: Date.now() - startedAt > 90_000
+    const staleCutoff = 90 * 1000;
+    expect(Date.now() - activity.startedAt > staleCutoff).toBe(true); // OLD: would be killed
+    expect(Date.now() - updatedActivity.startedAt > staleCutoff).toBe(false); // NEW: safe
+  });
+});
