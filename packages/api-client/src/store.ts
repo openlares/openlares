@@ -544,9 +544,27 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
   if (directToolEventSessions.has(sessionKey)) return; // has direct events
 
   const poll = async () => {
-    // Stop if session is no longer active
+    // Stop if session is no longer active or stale (no lifecycle end received)
     const activity = gatewayStore.getState().sessionActivities[sessionKey];
     if (!activity?.active) {
+      stopToolPoll(sessionKey);
+      return;
+    }
+    // Safety: if active for > 5 min, check sessions.list to see if still truly active
+    const staleCutoff = 5 * 60 * 1000;
+    if (activity.startedAt > 0 && Date.now() - activity.startedAt > staleCutoff) {
+      // Mark as ended — lifecycle end was probably missed
+      set((state) => ({
+        sessionActivities: {
+          ...state.sessionActivities,
+          [sessionKey]: {
+            ...state.sessionActivities[sessionKey],
+            active: false,
+            startedAt: state.sessionActivities[sessionKey]?.startedAt ?? 0,
+            endedAt: Date.now(),
+          },
+        },
+      }));
       stopToolPoll(sessionKey);
       return;
     }
