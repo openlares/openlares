@@ -522,6 +522,21 @@ function normaliseContent(content: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
+// Live session discovery — debounced refresh after new sessions appear
+// ---------------------------------------------------------------------------
+
+let sessionRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Schedule a debounced refreshSessions() call (1s). */
+function scheduleSessionRefresh(): void {
+  if (sessionRefreshTimer) return;
+  sessionRefreshTimer = setTimeout(async () => {
+    sessionRefreshTimer = null;
+    await gatewayStore.getState().refreshSessions();
+  }, 1_000);
+}
+
+// ---------------------------------------------------------------------------
 // Tool activity polling — for sessions without direct tool event subscriptions
 // ---------------------------------------------------------------------------
 
@@ -664,6 +679,10 @@ function stopAllToolPolls(): void {
   }
   directToolEventSessions.clear();
   lastSeenPollKey.clear();
+  if (sessionRefreshTimer) {
+    clearTimeout(sessionRefreshTimer);
+    sessionRefreshTimer = null;
+  }
 }
 
 function wireEvents(client: GatewayClient, set: StoreSetter): void {
@@ -766,12 +785,25 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
     if (payload.stream === 'lifecycle') {
       const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
       if (sk && payload.data.phase === 'start') {
-        set((state) => ({
-          sessionActivities: {
-            ...state.sessionActivities,
-            [sk]: { active: true, startedAt: payload.ts, endedAt: 0 },
-          },
-        }));
+        set((state) => {
+          const exists = state.sessions.some((s) => s.sessionKey === sk);
+          const update: Partial<GatewayState> = {
+            sessionActivities: {
+              ...state.sessionActivities,
+              [sk]: { active: true, startedAt: payload.ts, endedAt: 0 },
+            },
+          };
+          // Live session discovery: add unknown sessions immediately
+          if (!exists) {
+            update.sessions = [
+              ...state.sessions,
+              { sessionKey: sk, title: '', active: true, updatedAt: Date.now() },
+            ];
+            // Schedule a refresh to pick up the proper title
+            scheduleSessionRefresh();
+          }
+          return update;
+        });
         // Start polling for tool activity if no direct tool events
         startToolPoll(sk, client, set);
       }
