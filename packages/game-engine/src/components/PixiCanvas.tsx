@@ -376,11 +376,11 @@ export function PixiCanvas({
           const isRunning = !!(activity && shouldShowActivity(activity));
 
           if (isRunning) {
-            // ---- Arc trail: ease-out over 200%, visible cap at 360° ----
+            // ---- Arc trail: ease-out over 200%, tail catches up ----
             // Head follows ease-out over 2 full revolutions (720°).
-            // Visible arc is capped at 360° — once the head passes 360°
-            // the tail starts erasing from the anchor.  The tail inherits
-            // the same deceleration since it trails 360° behind the head.
+            // Phase 1 (0°→360°): arc GROWS from anchor to head.
+            // Phase 2 (360°→720°): arc SHRINKS — tail catches up to the
+            // decelerating head, erasing the trail naturally.
             avatar.arcTrail.alpha = 1;
             avatar.arcTrail.clear();
 
@@ -388,7 +388,7 @@ export function PixiCanvas({
             const segments = 24;
             const cycleDuration = 2.5;
             const totalAngle = Math.PI * 4; // 200% = 2 full revolutions
-            const maxArc = Math.PI * 2; // visible cap = one circle
+            const halfAngle = Math.PI * 2; // 360° = phase boundary
 
             const anchorAngle = avatar.phase;
             const cycleProgress = ((time + avatar.phase) / cycleDuration) % 1;
@@ -398,8 +398,11 @@ export function PixiCanvas({
             const swept = eased * totalAngle;
 
             const headAngle = anchorAngle + swept;
-            // Cap visible arc at 360° — tail erases once head exceeds one revolution
-            const arcLength = Math.min(swept, maxArc);
+
+            // Phase 1: arc grows (0 → 360°)
+            // Phase 2: arc shrinks (360° → 0°) — tail catches the head
+            const arcLength =
+              swept <= halfAngle ? swept : totalAngle - swept;
 
             if (arcLength > 0.05) {
               for (let i = 0; i < segments; i++) {
