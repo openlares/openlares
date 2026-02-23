@@ -307,7 +307,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
       const now = Date.now();
       const recentCutoff = 2 * 60 * 1000; // 2 minutes
       const recentSessions = sessions.filter(
-        (s) => s.updatedAt && now - s.updatedAt < recentCutoff
+        (s) => s.updatedAt && now - s.updatedAt < recentCutoff,
       );
       for (const s of recentSessions) {
         // Skip sessions that already have activity state
@@ -608,9 +608,7 @@ async function probeSessionActivity(
     const lastMsg = result.messages[result.messages.length - 1] as Record<string, unknown>;
     if (lastMsg?.role === 'assistant' && !Array.isArray(lastMsg.content)) return;
     if (lastMsg?.role === 'assistant' && Array.isArray(lastMsg.content)) {
-      const hasOnlyText = (lastMsg.content as { type?: string }[]).every(
-        (b) => b.type === 'text'
-      );
+      const hasOnlyText = (lastMsg.content as { type?: string }[]).every((b) => b.type === 'text');
       if (hasOnlyText) return; // Session finished with a text response
     }
 
