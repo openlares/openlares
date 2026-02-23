@@ -300,23 +300,9 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 
     set({ sessions });
 
-    // Seed activity state only for sessions the gateway reports as currently running.
-    // Don't use time-based heuristics — they cause false positives after page refresh.
-    for (const s of sessions) {
-      if (s.active && !gatewayStore.getState().sessionActivities[s.sessionKey]?.active) {
-        set((state) => ({
-          sessionActivities: {
-            ...state.sessionActivities,
-            [s.sessionKey]: {
-              active: true,
-              startedAt: s.updatedAt || Date.now(),
-              endedAt: 0,
-            },
-          },
-        }));
-        startToolPoll(s.sessionKey, client, set);
-      }
-    }
+    // Activity state is NOT seeded here — gateway's sessions.list has no `active` field.
+    // Activity indicators are driven purely by lifecycle events received via WebSocket.
+    // This prevents stale tool badges / rings showing after page refresh.
   },
 
   loadHistory: async (sessionKey) => {
@@ -630,8 +616,12 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
         const msgKey = lastMsg
           ? String(lastMsg.id ?? lastMsg.timestamp ?? JSON.stringify(lastMsg))
           : '';
-        if (msgKey && lastSeenPollKey.get(sessionKey) === msgKey) return;
+        const prevKey = lastSeenPollKey.get(sessionKey);
         if (msgKey) lastSeenPollKey.set(sessionKey, msgKey);
+        // First poll establishes baseline — don't show stale badges from old history
+        if (!prevKey) return;
+        // Nothing changed since last poll
+        if (msgKey === prevKey) return;
 
         const toolName = extractLatestToolName(result.messages);
         if (toolName) {
