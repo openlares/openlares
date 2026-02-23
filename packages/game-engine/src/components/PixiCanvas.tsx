@@ -399,13 +399,13 @@ export function PixiCanvas({
               headAngle = drawT * Math.PI * 2;
               tailAngle = headAngle - fullTrail;
             } else {
-              // Erase phase: tail catches up with ease-in (slow→fast)
-              // Faded tail lingers, bright head-end erases quickly
+              // Erase phase: tail catches up with ease-out (fast→slow)
+              // Bright near-head portion erases quickly, faded tail lingers
               const eraseT = (cycleTime - drawDuration) / eraseDuration;
-              const easedErase = eraseT * eraseT * eraseT; // cubic ease-in
-              // Head keeps moving slowly (never stops)
-              headAngle = Math.PI * 2 + eraseT * Math.PI * 0.3;
-              // Tail catches up to head
+              const easedErase = 1 - Math.pow(1 - eraseT, 3); // cubic ease-out
+              // Head keeps moving forward (never stops)
+              headAngle = Math.PI * 2 + eraseT * Math.PI * 0.5;
+              // Tail catches up aggressively then slows
               const endOfDrawTail = Math.PI * 2 - fullTrail;
               tailAngle = endOfDrawTail + easedErase * (headAngle - endOfDrawTail);
             }
