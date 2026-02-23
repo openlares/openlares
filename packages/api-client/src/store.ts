@@ -531,6 +531,9 @@ const toolPollIntervals = new Map<string, ReturnType<typeof setInterval>>();
 /** Sessions that receive direct tool events (via chat.send caps). */
 const directToolEventSessions = new Set<string>();
 
+/** Last seen message key per session — skip state updates when nothing changed. */
+const lastSeenPollKey = new Map<string, string>();
+
 /** Polling interval in ms. */
 const TOOL_POLL_INTERVAL_MS = 2_000;
 
@@ -603,10 +606,20 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
     try {
       const result = (await client.request('chat.history', {
         sessionKey,
-        limit: 10,
+        limit: 2,
       })) as { messages?: unknown[] };
 
       if (result?.messages && Array.isArray(result.messages)) {
+        // Timestamp guard: skip state updates if nothing changed since last poll
+        const lastMsg = result.messages[result.messages.length - 1] as
+          | Record<string, unknown>
+          | undefined;
+        const msgKey = lastMsg
+          ? String(lastMsg.id ?? lastMsg.timestamp ?? JSON.stringify(lastMsg))
+          : '';
+        if (msgKey && lastSeenPollKey.get(sessionKey) === msgKey) return;
+        if (msgKey) lastSeenPollKey.set(sessionKey, msgKey);
+
         const toolName = extractLatestToolName(result.messages);
         if (toolName) {
           set((state) => ({
@@ -641,6 +654,7 @@ function stopToolPoll(sessionKey: string): void {
     clearInterval(interval);
     toolPollIntervals.delete(sessionKey);
   }
+  lastSeenPollKey.delete(sessionKey);
 }
 
 /** Stop all active polls (e.g. on disconnect). */
@@ -649,6 +663,7 @@ function stopAllToolPolls(): void {
     stopToolPoll(sk);
   }
   directToolEventSessions.clear();
+  lastSeenPollKey.clear();
 }
 
 function wireEvents(client: GatewayClient, set: StoreSetter): void {
