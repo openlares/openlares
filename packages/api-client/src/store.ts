@@ -785,7 +785,7 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
           if (!exists) {
             update.sessions = [
               ...state.sessions,
-              { sessionKey: sk, title: '', active: true, updatedAt: Date.now() },
+              { sessionKey: sk, title: '', active: true, createdAt: Date.now(), updatedAt: Date.now() },
             ];
             // Schedule a refresh to pick up the proper title
             scheduleSessionRefresh();
