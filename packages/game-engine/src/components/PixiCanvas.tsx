@@ -27,7 +27,6 @@ interface SessionAvatar {
   sessionKey: string;
   graphic: Graphics;
   text: Text;
-  activityRing: Graphics;
   /** Traveling arc border animation (n8n-style). */
   arcTrail: Graphics;
   badge: Text;
@@ -173,13 +172,6 @@ export function PixiCanvas({
       glow.alpha = !isSelected && opacity >= 1.0 ? 1 : 0;
       avatarContainer.addChild(glow);
 
-      // ---- Activity ring (always present; visibility driven by ticker) ----
-      const activityRing = new Graphics();
-      activityRing.circle(0, 0, radius + 10);
-      activityRing.stroke({ color: 0x22d3ee, width: 2, alpha: 0.8 });
-      activityRing.alpha = 0; // ticker will set this
-      avatarContainer.addChild(activityRing);
-
       // ---- Traveling arc trail (n8n-style, redrawn each frame by ticker) ----
       const arcTrail = new Graphics();
       arcTrail.alpha = 0; // ticker will control
@@ -263,7 +255,6 @@ export function PixiCanvas({
         sessionKey: session.sessionKey,
         graphic: circle,
         text,
-        activityRing,
         arcTrail,
         badge,
         glow,
@@ -350,26 +341,30 @@ export function PixiCanvas({
           const isRunning = !!(activity && shouldShowActivity(activity));
 
           if (isRunning) {
-            const pulse = 0.5 + Math.sin(time * 6) * 0.5;
-            avatar.activityRing.alpha = pulse;
-            const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
-            avatar.activityRing.scale.set(ringScale);
-
             // ---- Traveling arc trail (n8n-style comet around border) ----
             avatar.arcTrail.alpha = 1;
             avatar.arcTrail.clear();
 
             const arcRadius = avatar.radius + 6;
-            const headAngle = time * 3 + avatar.phase; // rotation speed
-            const tailLength = Math.PI * 0.8; // ~144° tail
-            const segments = 12;
+            const tailLength = Math.PI * 1.5; // ~270° = 75% of circle
+            const segments = 20; // more segments for smoother gradient
+            const revolutionPeriod = 2.0; // seconds per full revolution
+
+            // Ease-out per revolution: fast start, slow finish
+            const rawProgress = ((time + avatar.phase) / revolutionPeriod) % 1.0;
+            // Cubic ease-in-out for smooth acceleration/deceleration
+            const easedProgress =
+              rawProgress < 0.5
+                ? 4 * rawProgress * rawProgress * rawProgress
+                : 1 - Math.pow(-2 * rawProgress + 2, 3) / 2;
+            const headAngle = easedProgress * Math.PI * 2;
 
             for (let i = 0; i < segments; i++) {
               const t = i / segments; // 0=head, 1=tail
               const segStart = headAngle - t * tailLength;
               const segEnd = headAngle - ((i + 1) / segments) * tailLength;
-              const segAlpha = 1.0 - t * t; // quadratic falloff
-              const segWidth = 3.0 - t * 1.5; // thinner toward tail
+              const segAlpha = 1.0 - t * t; // quadratic fade
+              const segWidth = 3.5 - t * 2.0; // thicker head, thinner tail
 
               avatar.arcTrail.arc(0, 0, arcRadius, segEnd, segStart);
               avatar.arcTrail.stroke({
@@ -379,7 +374,6 @@ export function PixiCanvas({
               });
             }
           } else {
-            avatar.activityRing.alpha = 0;
             avatar.arcTrail.alpha = 0;
           }
 
