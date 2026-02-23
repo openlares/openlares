@@ -29,6 +29,7 @@ interface SessionAvatar {
   text: Text;
   activityRing: Graphics;
   badge: Text;
+  braille: Text;
   glow: Graphics;
   container: Graphics;
   fullName: string;
@@ -209,15 +210,24 @@ export function PixiCanvas({
       text.y = -(radius + text.height + 6);
       avatarContainer.addChild(text);
 
-      // ---- Tool badge (always present; visibility driven by ticker) ----
+      // ---- Tool badge + braille spinner (visibility driven by ticker) ----
       const badge = new Text({
         text: '\u2699\uFE0F',
         style: { fontSize: 18, align: 'center' },
       });
       badge.x = -badge.width / 2;
       badge.y = radius + 6;
-      badge.alpha = 0; // ticker will set this
+      badge.alpha = 0;
       avatarContainer.addChild(badge);
+
+      const braille = new Text({
+        text: '\u280B',
+        style: { fontSize: 12, fill: 0xffffff, fontFamily: 'monospace' },
+      });
+      braille.x = badge.x + badge.width + 2;
+      braille.y = radius + 10;
+      braille.alpha = 0;
+      avatarContainer.addChild(braille);
 
       // ---- Interaction ----
       avatarContainer.eventMode = 'static';
@@ -258,6 +268,7 @@ export function PixiCanvas({
         text,
         activityRing,
         badge,
+        braille,
         glow,
         container: avatarContainer,
         fullName,
@@ -320,16 +331,11 @@ export function PixiCanvas({
         const activities = activitiesRef.current;
 
         for (const avatar of avatarsRef.current.values()) {
-          // Breathing
-          const breathAmp = avatar.isSelected ? 0.06 : 0.025;
-          const breathSpeed = avatar.isSelected ? 2.5 : 1.2;
-          const breath = Math.sin(time * breathSpeed + avatar.phase) * breathAmp;
-
-          // Smooth hover
+          // Smooth hover (no breathing)
           avatar.currentScale +=
             (avatar.targetScale - avatar.currentScale) * 0.12 * ((dt * 60) / 60);
 
-          avatar.container.scale.set(avatar.currentScale + breath);
+          avatar.container.scale.set(avatar.currentScale);
 
           // Floating drift
           avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
@@ -355,16 +361,24 @@ export function PixiCanvas({
             avatar.activityRing.alpha = 0;
           }
 
-          // ---- Tool badge (driven by live activities ref) ----
+          // ---- Tool icon + braille spinner (static, no bobbing) ----
           const hasTool = !!(activity?.toolName && isToolBadgeFresh(activity.toolTs));
           if (isRunning && hasTool) {
             const icon = toolIcon(activity!.toolName);
             if (avatar.badge.text !== icon) avatar.badge.text = icon;
             avatar.badge.alpha = 1;
-            const bob = Math.sin(time * 2 + avatar.phase) * 2;
-            avatar.badge.y = avatar.radius + 6 + bob;
+            avatar.badge.y = avatar.radius + 6;
+
+            // Braille spinner to the right of the icon
+            const brailleChars = '\u280B\u2819\u2839\u2838\u283C\u2834\u2826\u2827\u2807\u280F';
+            const tick = Math.floor(time * 6);
+            avatar.braille.text = brailleChars[tick % brailleChars.length]!;
+            avatar.braille.x = avatar.badge.x + avatar.badge.width + 2;
+            avatar.braille.y = avatar.radius + 10;
+            avatar.braille.alpha = 1;
           } else {
             avatar.badge.alpha = 0;
+            avatar.braille.alpha = 0;
           }
         }
       });

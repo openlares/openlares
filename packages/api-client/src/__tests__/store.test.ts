@@ -165,6 +165,14 @@ describe('cleanSessionName', () => {
     );
   });
 
+  it('strips discord ID prefix from title', () => {
+    expect(
+      cleanSessionName(
+        session('agent:main:discord:channel:123', 'discord:1467208089403920651#openlares'),
+      ),
+    ).toBe('#openlares');
+  });
+
   it('uses title when available', () => {
     expect(cleanSessionName(session('some-key', 'My Custom Title'))).toBe('My Custom Title');
   });

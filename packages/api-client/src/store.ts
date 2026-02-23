@@ -39,17 +39,15 @@ export function cleanSessionName(session: SessionSummary): string {
   const displayName = title || sessionKey;
 
   // Clean discord sessions
-  if (displayName.includes('discord:')) {
-    // Extract channel name after #
-    const channelMatch = displayName.match(/#([^#]+)$/);
-    if (channelMatch) {
-      return `#${channelMatch[1]}`;
-    }
-
+  if (displayName.includes('discord:') || sessionKey.includes(':discord:')) {
     // Handle special cases like "discord:g-agent-main-main"
     if (displayName.includes('g-agent-main-main')) {
       return 'Main';
     }
+    // Strip provider prefix + ID: "discord:1467208089403920651#openlares" → "#openlares"
+    const stripped = displayName.replace(/^discord:\d+/, '');
+    if (stripped.startsWith('#')) return stripped;
+    // Title already clean or has its own format — return as-is
   }
 
   // Clean cron jobs
@@ -300,9 +298,23 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 
     set({ sessions });
 
-    // Activity state is NOT seeded here — gateway's sessions.list has no `active` field.
-    // Activity indicators are driven purely by lifecycle events received via WebSocket.
-    // This prevents stale tool badges / rings showing after page refresh.
+    // Probe recently-updated sessions for in-progress tool activity.
+    // Gateway sessions.list doesn't report running state, so we check
+    // chat.history for recent tool calls to seed activity indicators
+    // after page refresh.
+    const gwClient = get().client;
+    if (gwClient) {
+      const now = Date.now();
+      const recentCutoff = 2 * 60 * 1000; // 2 minutes
+      const recentSessions = sessions.filter(
+        (s) => s.updatedAt && now - s.updatedAt < recentCutoff,
+      );
+      for (const s of recentSessions) {
+        // Skip sessions that already have activity state
+        if (get().sessionActivities[s.sessionKey]?.active) continue;
+        probeSessionActivity(s.sessionKey, gwClient, set);
+      }
+    }
   },
 
   loadHistory: async (sessionKey) => {
@@ -571,6 +583,56 @@ export function extractLatestToolName(messages: unknown[]): string | undefined {
 }
 
 /** Start polling chat.history for a session's tool activity. */
+/**
+ * Probe a session via chat.history to detect in-progress tool activity.
+ * Used after page refresh to seed activity state when the gateway doesn't
+ * replay lifecycle events for already-running sessions.
+ */
+async function probeSessionActivity(
+  sessionKey: string,
+  client: GatewayClient,
+  set: StoreSetter,
+): Promise<void> {
+  try {
+    const result = (await client.request('chat.history', {
+      sessionKey,
+      limit: 3,
+    })) as { messages?: unknown[] };
+
+    if (!result?.messages?.length) return;
+
+    const toolName = extractLatestToolName(result.messages);
+    if (!toolName) return;
+
+    // Check if the last message is a final assistant text (session finished)
+    const lastMsg = result.messages[result.messages.length - 1] as Record<string, unknown>;
+    if (lastMsg?.role === 'assistant' && !Array.isArray(lastMsg.content)) return;
+    if (lastMsg?.role === 'assistant' && Array.isArray(lastMsg.content)) {
+      const hasOnlyText = (lastMsg.content as { type?: string }[]).every((b) => b.type === 'text');
+      if (hasOnlyText) return; // Session finished with a text response
+    }
+
+    // Session has recent tool activity and no final text response — likely still running
+    set((state) => ({
+      sessionActivities: {
+        ...state.sessionActivities,
+        [sessionKey]: {
+          active: true,
+          startedAt: Date.now(),
+          endedAt: 0,
+          toolName,
+          toolTs: Date.now(),
+        },
+      },
+    }));
+
+    // Start polling for ongoing tool updates
+    startToolPoll(sessionKey, client, set);
+  } catch {
+    // Best-effort — don't break page load if a probe fails
+  }
+}
+
 function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSetter): void {
   if (toolPollIntervals.has(sessionKey)) return; // already polling
   if (directToolEventSessions.has(sessionKey)) return; // has direct events
@@ -618,10 +680,8 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
           : '';
         const prevKey = lastSeenPollKey.get(sessionKey);
         if (msgKey) lastSeenPollKey.set(sessionKey, msgKey);
-        // First poll establishes baseline — don't show stale badges from old history
-        if (!prevKey) return;
-        // Nothing changed since last poll
-        if (msgKey === prevKey) return;
+        // Nothing changed since last poll (skip only if we have a baseline)
+        if (prevKey && msgKey === prevKey) return;
 
         const toolName = extractLatestToolName(result.messages);
         if (toolName) {

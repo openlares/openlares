@@ -141,7 +141,15 @@ export function resolveSessionName(session: SessionSummary): ResolvedName {
 
   // ---- Channel sources (detected from sessionKey) ----
   if (sessionKey.includes(':discord:')) {
-    return { icon: '\uD83D\uDCAC', name: title || 'discord' };
+    if (title) {
+      // Strip provider prefix + ID: "discord:1467208089403920651#openlares" → "#openlares"
+      // Also handles "Guild #openlares channel id:123" → "#openlares channel id:123"
+      const stripped = title.replace(/^discord:\d+/, '');
+      if (stripped.startsWith('#')) return { icon: '\uD83D\uDCAC', name: stripped };
+      // Title already clean (e.g. "#openlares › bug fixes #1")
+      return { icon: '\uD83D\uDCAC', name: title };
+    }
+    return { icon: '\uD83D\uDCAC', name: 'discord' };
   }
 
   if (sessionKey.includes(':telegram:')) {
