@@ -376,47 +376,41 @@ export function PixiCanvas({
           const isRunning = !!(activity && shouldShowActivity(activity));
 
           if (isRunning) {
-            // ---- Traveling arc trail with draw+erase phases ----
+            // ---- Arc trail with STATIC erase point ----
+            // Head sweeps around the circle; tail stays anchored at a
+            // fixed point.  Arc grows from anchor → head, bright at the
+            // head and fading toward the anchor.  Last 15 % of the cycle
+            // fades the whole trail so the reset is seamless.
             avatar.arcTrail.alpha = 1;
             avatar.arcTrail.clear();
 
             const arcRadius = avatar.radius + 6;
-            const fullTrail = Math.PI * 1.5; // 270° = 75% of circle
-            const segments = 20;
-            const cycleDuration = 2.5; // total seconds per cycle
-            const drawRatio = 0.6; // 60% drawing, 40% erasing
-            const drawDuration = cycleDuration * drawRatio;
-            const eraseDuration = cycleDuration * (1 - drawRatio);
+            const segments = 24;
+            const cycleDuration = 2.0; // seconds per full revolution
 
-            const cycleTime = (time + avatar.phase) % cycleDuration;
+            // Fixed anchor / erase point (unique per session)
+            const anchorAngle = avatar.phase;
 
-            let headAngle: number;
-            let tailAngle: number;
+            // Cycle progress 0 → 1 (offset by phase so sessions desync)
+            const cycleProgress = ((time + avatar.phase) / cycleDuration) % 1;
 
-            if (cycleTime < drawDuration) {
-              // Draw phase: head moves at constant speed
-              const drawT = cycleTime / drawDuration;
-              headAngle = drawT * Math.PI * 2;
-              tailAngle = headAngle - fullTrail;
-            } else {
-              // Erase phase: tail catches up with ease-out (fast→slow)
-              // Bright near-head portion erases quickly, faded tail lingers
-              const eraseT = (cycleTime - drawDuration) / eraseDuration;
-              const easedErase = 1 - Math.pow(1 - eraseT, 3); // cubic ease-out
-              // Head keeps moving forward (never stops)
-              headAngle = Math.PI * 2 + eraseT * Math.PI * 0.5;
-              // Tail catches up aggressively then slows
-              const endOfDrawTail = Math.PI * 2 - fullTrail;
-              tailAngle = endOfDrawTail + easedErase * (headAngle - endOfDrawTail);
-            }
+            // Head sweeps clockwise from anchor
+            const headAngle = anchorAngle + cycleProgress * Math.PI * 2;
+            const arcLength = cycleProgress * Math.PI * 2;
 
-            const visibleLength = headAngle - tailAngle;
-            if (visibleLength > 0.02) {
+            // Fade entire trail in last 15 % for a seamless loop reset
+            const fadeStart = 0.85;
+            const globalAlpha =
+              cycleProgress > fadeStart
+                ? 1.0 - (cycleProgress - fadeStart) / (1.0 - fadeStart)
+                : 1.0;
+
+            if (arcLength > 0.05 && globalAlpha > 0.01) {
               for (let i = 0; i < segments; i++) {
-                const t = i / segments; // 0=head, 1=tail
-                const segStart = headAngle - t * visibleLength;
-                const segEnd = headAngle - ((i + 1) / segments) * visibleLength;
-                const segAlpha = 1.0 - t * t; // quadratic fade
+                const t = i / segments; // 0 = head (bright), 1 = anchor (dim)
+                const segStart = headAngle - t * arcLength;
+                const segEnd = headAngle - ((i + 1) / segments) * arcLength;
+                const segAlpha = (1.0 - t * t) * globalAlpha;
                 const segWidth = 3.5 - t * 2.0;
 
                 avatar.arcTrail.arc(0, 0, arcRadius, segEnd, segStart);
