@@ -376,36 +376,44 @@ export function PixiCanvas({
           const isRunning = !!(activity && shouldShowActivity(activity));
 
           if (isRunning) {
-            // ---- Arc trail with STATIC erase point & ease-out ----
-            // Head starts at a fixed anchor, sweeps full speed, then
-            // decelerates (ease-out) as it approaches the anchor again.
-            // Trail is bright at head, naturally fades to invisible at
-            // the anchor — no artificial fade needed.
+            // ---- Arc trail: constant speed → ease-out with overlap ----
+            // Head runs at full constant speed for one complete revolution,
+            // then continues PAST the anchor with ease-out deceleration
+            // (1.5 total revolutions).  Trail is bright at head, fades
+            // naturally toward the anchor — no artificial fade.
             avatar.arcTrail.alpha = 1;
             avatar.arcTrail.clear();
 
             const arcRadius = avatar.radius + 6;
             const segments = 24;
-            const cycleDuration = 2.5; // seconds per full revolution
+            const cycleDuration = 3.0;
+            const constantTimeRatio = 0.55; // 55% of time = full circle at constant speed
+            const constantAngle = Math.PI * 2; // 360°
+            const easeAngle = Math.PI; // extra 180° overlap with deceleration
 
-            // Fixed anchor / erase point (unique per session)
             const anchorAngle = avatar.phase;
-
-            // Cycle progress 0 → 1 (offset by phase so sessions desync)
             const cycleProgress = ((time + avatar.phase) / cycleDuration) % 1;
 
-            // Ease-out: fast start, decelerates toward the anchor
-            const eased = 1 - Math.pow(1 - cycleProgress, 2.5);
+            let swept: number;
+            if (cycleProgress < constantTimeRatio) {
+              // Constant speed: 0 → 360°
+              swept = (cycleProgress / constantTimeRatio) * constantAngle;
+            } else {
+              // Ease-out past the anchor: 360° → 540°
+              const easeT =
+                (cycleProgress - constantTimeRatio) / (1 - constantTimeRatio);
+              const eased = 1 - Math.pow(1 - easeT, 2.5);
+              swept = constantAngle + eased * easeAngle;
+            }
 
-            const headAngle = anchorAngle + eased * Math.PI * 2;
-            const arcLength = eased * Math.PI * 2;
+            const headAngle = anchorAngle + swept;
 
-            if (arcLength > 0.05) {
+            if (swept > 0.05) {
               for (let i = 0; i < segments; i++) {
                 const t = i / segments; // 0 = head (bright), 1 = anchor (dim)
-                const segStart = headAngle - t * arcLength;
-                const segEnd = headAngle - ((i + 1) / segments) * arcLength;
-                const segAlpha = 1.0 - t * t; // quadratic: bright→invisible
+                const segStart = headAngle - t * swept;
+                const segEnd = headAngle - ((i + 1) / segments) * swept;
+                const segAlpha = 1.0 - t * t;
                 const segWidth = 3.5 - t * 2.0;
 
                 avatar.arcTrail.arc(0, 0, arcRadius, segEnd, segStart);
