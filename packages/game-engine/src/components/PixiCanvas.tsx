@@ -28,6 +28,8 @@ interface SessionAvatar {
   graphic: Graphics;
   text: Text;
   activityRing: Graphics;
+  /** Traveling arc border animation (n8n-style). */
+  arcTrail: Graphics;
   badge: Text;
   glow: Graphics;
   container: Graphics;
@@ -178,6 +180,11 @@ export function PixiCanvas({
       activityRing.alpha = 0; // ticker will set this
       avatarContainer.addChild(activityRing);
 
+      // ---- Traveling arc trail (n8n-style, redrawn each frame by ticker) ----
+      const arcTrail = new Graphics();
+      arcTrail.alpha = 0; // ticker will control
+      avatarContainer.addChild(arcTrail);
+
       // ---- Circle ----
       const circle = new Graphics();
       if (isSelected) {
@@ -257,6 +264,7 @@ export function PixiCanvas({
         graphic: circle,
         text,
         activityRing,
+        arcTrail,
         badge,
         glow,
         container: avatarContainer,
@@ -320,16 +328,11 @@ export function PixiCanvas({
         const activities = activitiesRef.current;
 
         for (const avatar of avatarsRef.current.values()) {
-          // Breathing
-          const breathAmp = avatar.isSelected ? 0.06 : 0.025;
-          const breathSpeed = avatar.isSelected ? 2.5 : 1.2;
-          const breath = Math.sin(time * breathSpeed + avatar.phase) * breathAmp;
-
-          // Smooth hover
+          // Smooth hover (no breathing/size pulsation)
           avatar.currentScale +=
             (avatar.targetScale - avatar.currentScale) * 0.12 * ((dt * 60) / 60);
 
-          avatar.container.scale.set(avatar.currentScale + breath);
+          avatar.container.scale.set(avatar.currentScale);
 
           // Floating drift
           avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
@@ -351,8 +354,33 @@ export function PixiCanvas({
             avatar.activityRing.alpha = pulse;
             const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
             avatar.activityRing.scale.set(ringScale);
+
+            // ---- Traveling arc trail (n8n-style comet around border) ----
+            avatar.arcTrail.alpha = 1;
+            avatar.arcTrail.clear();
+
+            const arcRadius = avatar.radius + 6;
+            const headAngle = time * 3 + avatar.phase; // rotation speed
+            const tailLength = Math.PI * 0.8; // ~144° tail
+            const segments = 12;
+
+            for (let i = 0; i < segments; i++) {
+              const t = i / segments; // 0=head, 1=tail
+              const segStart = headAngle - t * tailLength;
+              const segEnd = headAngle - ((i + 1) / segments) * tailLength;
+              const segAlpha = 1.0 - t * t; // quadratic falloff
+              const segWidth = 3.0 - t * 1.5; // thinner toward tail
+
+              avatar.arcTrail.arc(0, 0, arcRadius, segEnd, segStart);
+              avatar.arcTrail.stroke({
+                color: 0xef4444,
+                width: Math.max(1, segWidth),
+                alpha: segAlpha * 0.9,
+              });
+            }
           } else {
             avatar.activityRing.alpha = 0;
+            avatar.arcTrail.alpha = 0;
           }
 
           // ---- Tool badge (driven by live activities ref) ----
