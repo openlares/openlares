@@ -531,22 +531,34 @@ const toolPollIntervals = new Map<string, ReturnType<typeof setInterval>>();
 /** Sessions that receive direct tool events (via chat.send caps). */
 const directToolEventSessions = new Set<string>();
 
+/** Last seen message key per session — skip state updates when nothing changed. */
+const lastSeenPollKey = new Map<string, string>();
+
 /** Polling interval in ms. */
 const TOOL_POLL_INTERVAL_MS = 2_000;
 
 /**
  * Extract the latest tool name from chat history messages.
- * Scans from end to beginning, returns the first tool_use name found.
+ *
+ * Scans from end to beginning. Handles multiple gateway formats:
+ * - `toolResult` role messages (have `toolName` directly)
+ * - Content blocks with `type: "toolCall"` / `"tool_use"` / `"tool_call"` and `name`
  */
 export function extractLatestToolName(messages: unknown[]): string | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i] as { content?: unknown };
-    if (!msg?.content) continue;
+    const msg = messages[i] as Record<string, unknown>;
+    if (!msg) continue;
 
-    // Content can be an array of blocks or a string
-    if (Array.isArray(msg.content)) {
-      for (let j = msg.content.length - 1; j >= 0; j--) {
-        const block = msg.content[j] as { type?: string; name?: string };
+    // Gateway stores tool results as role="toolResult" with toolName field
+    if (msg.role === 'toolResult' && typeof msg.toolName === 'string') {
+      return msg.toolName;
+    }
+
+    // Check content blocks for tool call types
+    const content = msg.content;
+    if (Array.isArray(content)) {
+      for (let j = content.length - 1; j >= 0; j--) {
+        const block = content[j] as { type?: string; name?: string };
         if (
           block?.type &&
           ['toolcall', 'tool_call', 'tooluse', 'tool_use'].includes(block.type.toLowerCase()) &&
@@ -598,6 +610,16 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
       })) as { messages?: unknown[] };
 
       if (result?.messages && Array.isArray(result.messages)) {
+        // Timestamp guard: skip state updates if nothing changed since last poll
+        const lastMsg = result.messages[result.messages.length - 1] as
+          | Record<string, unknown>
+          | undefined;
+        const msgKey = lastMsg
+          ? String(lastMsg.id ?? lastMsg.timestamp ?? JSON.stringify(lastMsg))
+          : '';
+        if (msgKey && lastSeenPollKey.get(sessionKey) === msgKey) return;
+        if (msgKey) lastSeenPollKey.set(sessionKey, msgKey);
+
         const toolName = extractLatestToolName(result.messages);
         if (toolName) {
           set((state) => ({
@@ -632,6 +654,7 @@ function stopToolPoll(sessionKey: string): void {
     clearInterval(interval);
     toolPollIntervals.delete(sessionKey);
   }
+  lastSeenPollKey.delete(sessionKey);
 }
 
 /** Stop all active polls (e.g. on disconnect). */
@@ -640,6 +663,7 @@ function stopAllToolPolls(): void {
     stopToolPoll(sk);
   }
   directToolEventSessions.clear();
+  lastSeenPollKey.clear();
 }
 
 function wireEvents(client: GatewayClient, set: StoreSetter): void {

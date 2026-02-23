@@ -393,4 +393,52 @@ describe('extractLatestToolName', () => {
     ];
     expect(extractLatestToolName(messages)).toBeUndefined();
   });
+
+  it('extracts toolName from toolResult role messages', () => {
+    const messages = [
+      { role: 'assistant', content: [{ type: 'toolCall', name: 'exec', id: '1' }] },
+      { role: 'toolResult', toolCallId: '1', toolName: 'exec', content: 'output...' },
+    ];
+    expect(extractLatestToolName(messages)).toBe('exec');
+  });
+
+  it('handles toolCall camelCase type (gateway native format)', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Running...' },
+          { type: 'toolCall', name: 'read', id: 'toolu_abc' },
+        ],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBe('read');
+  });
+
+  it('prefers latest toolResult over earlier toolCall', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [{ type: 'toolCall', name: 'read', id: '1' }],
+      },
+      { role: 'toolResult', toolCallId: '1', toolName: 'read', content: '...' },
+      {
+        role: 'assistant',
+        content: [{ type: 'toolCall', name: 'exec', id: '2' }],
+      },
+      { role: 'toolResult', toolCallId: '2', toolName: 'exec', content: '...' },
+    ];
+    // Scanning from end: last toolResult has toolName=exec
+    expect(extractLatestToolName(messages)).toBe('exec');
+  });
+
+  it('finds toolResult even when surrounded by text messages', () => {
+    const messages = [
+      { role: 'user', content: 'do something' },
+      { role: 'toolResult', toolCallId: '1', toolName: 'web_search', content: 'results...' },
+      { role: 'assistant', content: 'Here are the results' },
+    ];
+    // Last message is text-only, but toolResult before it has toolName
+    expect(extractLatestToolName(messages)).toBe('web_search');
+  });
 });
