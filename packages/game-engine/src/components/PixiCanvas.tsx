@@ -371,7 +371,7 @@ export function PixiCanvas({
 
             // Braille spinner to the right of the icon
             const brailleChars = '\u280B\u2819\u2839\u2838\u283C\u2834\u2826\u2827\u2807\u280F';
-            const tick = Math.floor(time * 3);
+            const tick = Math.floor(time * 6);
             avatar.braille.text = brailleChars[tick % brailleChars.length]!;
             avatar.braille.x = avatar.badge.x + avatar.badge.width + 2;
             avatar.braille.y = avatar.radius + 10;
