@@ -61,5 +61,6 @@ export {
   cleanSessionName,
   shouldDisplayMessage,
   cleanMessageContent,
+  extractLatestToolName,
 } from './store';
 export type { GatewayState, GatewayActions, GatewayStore, SessionActivity } from './store';

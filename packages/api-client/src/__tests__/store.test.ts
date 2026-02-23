@@ -8,6 +8,7 @@ import {
   shouldDisplayMessage,
   cleanSessionName,
   cleanMessageContent,
+  extractLatestToolName,
   gatewayStore,
 } from '../store';
 import type { ChatMessage } from '@openlares/core';
@@ -269,5 +270,94 @@ describe('cleanMessageContent', () => {
 
   it('handles empty input', () => {
     expect(cleanMessageContent('')).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractLatestToolName
+// ---------------------------------------------------------------------------
+
+describe('extractLatestToolName', () => {
+  it('extracts tool_use name from last message', () => {
+    const messages = [
+      { role: 'user', content: 'hello' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Let me check...' },
+          { type: 'tool_use', name: 'exec', id: '1', input: {} },
+        ],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBe('exec');
+  });
+
+  it('returns the LAST tool_use when multiple exist', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', name: 'read', id: '1', input: {} },
+          { type: 'tool_use', name: 'write', id: '2', input: {} },
+        ],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBe('write');
+  });
+
+  it('scans messages from end to beginning', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', name: 'read', id: '1', input: {} }],
+      },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', name: 'exec', id: '2', input: {} }],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBe('exec');
+  });
+
+  it('handles toolcall type variant', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [{ type: 'toolcall', name: 'web_search' }],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBe('web_search');
+  });
+
+  it('handles tool_call type variant', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_call', name: 'browser' }],
+      },
+    ];
+    expect(extractLatestToolName(messages)).toBe('browser');
+  });
+
+  it('returns undefined for text-only messages', () => {
+    const messages = [
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: [{ type: 'text', text: 'Hi!' }] },
+    ];
+    expect(extractLatestToolName(messages)).toBeUndefined();
+  });
+
+  it('returns undefined for empty messages', () => {
+    expect(extractLatestToolName([])).toBeUndefined();
+  });
+
+  it('returns undefined for string content', () => {
+    const messages = [{ role: 'assistant', content: 'just text' }];
+    expect(extractLatestToolName(messages)).toBeUndefined();
+  });
+
+  it('returns undefined for messages without content', () => {
+    const messages = [{ role: 'system' }];
+    expect(extractLatestToolName(messages)).toBeUndefined();
   });
 });
