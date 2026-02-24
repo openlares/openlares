@@ -6,7 +6,7 @@
 
 import { eq, and, asc, desc } from 'drizzle-orm';
 import type { OpenlareDb } from './client.js';
-import { dashboards, queues, transitions, tasks, taskHistory, attachments } from './schema.js';
+import { dashboards, queues, transitions, tasks, taskHistory } from './schema.js';
 import type { DashboardConfig, TransitionConditions } from './schema.js';
 
 // ---------------------------------------------------------------------------

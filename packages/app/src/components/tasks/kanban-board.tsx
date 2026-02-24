@@ -31,6 +31,23 @@ export function KanbanBoard({
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
+  // Escape key to close modals
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        if (selectedTask) {
+          setSelectedTask(null);
+        } else if (showAddModal) {
+          setShowAddModal(null);
+          setNewTitle('');
+          setNewDescription('');
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTask, showAddModal]);
+
   // Poll executor status + refresh tasks
   useEffect(() => {
     let cancelled = false;
