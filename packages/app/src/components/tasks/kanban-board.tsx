@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { QueueColumn } from './queue-column';
 import { TaskDetail } from './task-detail';
+import { DashboardConfig } from './dashboard-config';
 import type { Dashboard, Queue, Task, Transition } from './types';
 
 interface KanbanBoardProps {
@@ -28,6 +29,7 @@ export function KanbanBoard({
   const [newDescription, setNewDescription] = useState('');
   const [executorRunning, setExecutorRunning] = useState(false);
   const [executorTaskId, setExecutorTaskId] = useState<string | null>(null);
+  const [showConfig, setShowConfig] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -35,7 +37,9 @@ export function KanbanBoard({
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        if (selectedTask) {
+        if (showConfig) {
+          setShowConfig(false);
+        } else if (selectedTask) {
           setSelectedTask(null);
         } else if (showAddModal) {
           setShowAddModal(null);
@@ -46,7 +50,7 @@ export function KanbanBoard({
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedTask, showAddModal]);
+  }, [selectedTask, showAddModal, showConfig]);
 
   // Poll executor status + refresh tasks
   useEffect(() => {
@@ -198,6 +202,15 @@ export function KanbanBoard({
     [dashboard.id, showAddModal, newTitle, newDescription],
   );
 
+  // Handle queue/transition config changes
+  const handleQueuesChange = useCallback(
+    (_newQueues: Queue[], _newTransitions: Transition[]) => {
+      // Force page reload to get fresh server-side data
+      window.location.reload();
+    },
+    [],
+  );
+
   // Handle task update from detail panel
   const handleUpdateTask = useCallback((updated: Task) => {
     setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
@@ -225,6 +238,12 @@ export function KanbanBoard({
               Working...
             </span>
           )}
+          <button
+            onClick={() => setShowConfig(true)}
+            className="rounded-lg bg-slate-700/50 px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-200"
+          >
+            ⚙️ Configure
+          </button>
           <button
             onClick={toggleExecutor}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -302,6 +321,17 @@ export function KanbanBoard({
             </div>
           </form>
         </div>
+      )}
+
+      {/* Dashboard config modal */}
+      {showConfig && (
+        <DashboardConfig
+          dashboard={dashboard}
+          queues={queues}
+          transitions={transitions}
+          onClose={() => setShowConfig(false)}
+          onQueuesChange={handleQueuesChange}
+        />
       )}
 
       {/* Task detail modal */}
