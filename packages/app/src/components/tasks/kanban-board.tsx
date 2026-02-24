@@ -339,6 +339,7 @@ export function KanbanBoard({
         <TaskDetail
           task={selectedTask}
           queue={queues.find((q) => q.id === selectedTask.queueId)}
+          queues={queues}
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdateTask}
           onDelete={handleDeleteTask}

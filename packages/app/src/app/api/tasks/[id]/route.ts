@@ -40,7 +40,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const db = getDb();
   const task = getTask(db, id);
   if (!task) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  const history = getTaskHistory(db, id);
+  const history = getTaskHistory(db, id).map((h) => ({
+    ...h,
+    createdAt: h.createdAt instanceof Date ? h.createdAt.getTime() : (h.createdAt as number),
+  }));
   return NextResponse.json({ ...serializeTask(task), history });
 }
 

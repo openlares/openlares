@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import type { Task, Queue } from './types';
+import { useState, useCallback, useEffect } from 'react';
+import type { Task, Queue, TaskHistory } from './types';
 
 interface TaskDetailProps {
   task: Task;
   queue: Queue | undefined;
+  queues?: Queue[];
   onClose: () => void;
   onUpdate: (task: Task) => void;
   onDelete: (taskId: string) => void;
@@ -18,14 +19,38 @@ const statusLabels: Record<Task['status'], { text: string; color: string }> = {
   failed: { text: 'Failed', color: 'bg-red-500/20 text-red-300' },
 };
 
-export function TaskDetail({ task, queue, onClose, onUpdate, onDelete }: TaskDetailProps) {
+export function TaskDetail({ task, queue, queues = [], onClose, onUpdate, onDelete }: TaskDetailProps) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? '');
   const [priority, setPriority] = useState(task.priority);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [history, setHistory] = useState<TaskHistory[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const isDirty = title !== task.title || description !== (task.description ?? '') || priority !== task.priority;
+
+  // Fetch history on mount
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoading(true);
+    fetch(`/api/tasks/${task.id}`)
+      .then((res) => {
+        if (res.ok) return res.json() as Promise<Task & { history: TaskHistory[] }>;
+        return null;
+      })
+      .then((data) => {
+        if (!cancelled && data?.history) {
+          setHistory(data.history);
+        }
+      })
+      .catch(() => {/* ignore */})
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [task.id]);
 
   const handleSave = useCallback(async () => {
     if (!isDirty || saving) return;
@@ -60,6 +85,14 @@ export function TaskDetail({ task, queue, onClose, onUpdate, onDelete }: TaskDet
       // TODO: error toast
     }
   }, [task.id, onDelete]);
+
+  const resolveQueueName = useCallback(
+    (queueId: string | null): string => {
+      if (!queueId) return 'None';
+      return queues.find((q) => q.id === queueId)?.name ?? queueId;
+    },
+    [queues],
+  );
 
   const status = statusLabels[task.status];
 
@@ -112,6 +145,53 @@ export function TaskDetail({ task, queue, onClose, onUpdate, onDelete }: TaskDet
             {task.sessionKey && <p>Session: {task.sessionKey}</p>}
             <p>Created: {new Date(task.createdAt).toLocaleString()}</p>
             {task.completedAt && <p>Completed: {new Date(task.completedAt).toLocaleString()}</p>}
+          </div>
+
+          {/* History section */}
+          <div className="border-t border-slate-700/50 pt-3">
+            <button
+              onClick={() => setHistoryOpen((o) => !o)}
+              className="flex w-full items-center justify-between text-xs font-medium text-slate-400 hover:text-slate-200"
+            >
+              <span>History {!historyLoading && `(${history.length})`}</span>
+              <span className="text-slate-500">{historyOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {historyOpen && (
+              <div className="mt-3">
+                {historyLoading ? (
+                  <p className="text-xs text-slate-500">Loading...</p>
+                ) : history.length === 0 ? (
+                  <p className="text-xs text-slate-500">No history yet</p>
+                ) : (
+                  <ol className="relative ml-2 border-l border-slate-700">
+                    {history.map((entry) => (
+                      <li key={entry.id} className="mb-4 ml-4 last:mb-0">
+                        {/* Timeline dot */}
+                        <span className="absolute -left-1.5 mt-1 h-3 w-3 rounded-full border border-slate-600 bg-cyan-500/60" />
+                        <p className="text-sm text-slate-200">
+                          Moved from{' '}
+                          <span className="font-medium text-slate-100">
+                            {resolveQueueName(entry.fromQueueId)}
+                          </span>{' '}
+                          →{' '}
+                          <span className="font-medium text-slate-100">
+                            {resolveQueueName(entry.toQueueId)}
+                          </span>{' '}
+                          <span className="text-slate-400">by {entry.actor}</span>
+                        </p>
+                        {entry.note && (
+                          <p className="mt-0.5 text-xs text-slate-500">{entry.note}</p>
+                        )}
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {new Date(entry.createdAt).toLocaleString()}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

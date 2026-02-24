@@ -44,3 +44,13 @@ export interface Task {
   updatedAt: number;
   completedAt: number | null;
 }
+
+export interface TaskHistory {
+  id: string;
+  taskId: string;
+  fromQueueId: string | null;
+  toQueueId: string | null;
+  actor: string;
+  note: string | null;
+  createdAt: number;
+}
