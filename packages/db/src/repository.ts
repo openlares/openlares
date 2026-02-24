@@ -284,6 +284,45 @@ export function failTask(db: OpenlareDb, taskId: string): typeof tasks.$inferSel
 }
 
 /**
+ * Update a task's title, description, or priority.
+ */
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string;
+  priority?: number;
+}
+
+export function updateTask(
+  db: OpenlareDb,
+  taskId: string,
+  input: UpdateTaskInput,
+): typeof tasks.$inferSelect | null {
+  const task = getTask(db, taskId);
+  if (!task) return null;
+
+  const updates: Record<string, unknown> = { updatedAt: now() };
+  if (input.title !== undefined) updates.title = input.title;
+  if (input.description !== undefined) updates.description = input.description;
+  if (input.priority !== undefined) updates.priority = input.priority;
+
+  db.update(tasks).set(updates).where(eq(tasks.id, taskId)).run();
+
+  return getTask(db, taskId) ?? null;
+}
+
+/**
+ * Delete a task and all its history/attachments (via CASCADE).
+ * Returns true if a task was deleted, false if not found.
+ */
+export function deleteTask(db: OpenlareDb, taskId: string): boolean {
+  const task = getTask(db, taskId);
+  if (!task) return false;
+
+  db.delete(tasks).where(eq(tasks.id, taskId)).run();
+  return true;
+}
+
+/**
  * Get the next claimable task from assistant-owned queues in a dashboard.
  * Returns the highest-priority pending task, respecting agent limits.
  */

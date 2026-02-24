@@ -8,6 +8,7 @@ interface QueueColumnProps {
   queue: Queue;
   tasks: Task[];
   onAddTask?: (queueId: string) => void;
+  onSelectTask?: (task: Task) => void;
 }
 
 const ownerBadge: Record<Queue['ownerType'], { label: string; color: string }> = {
@@ -15,7 +16,7 @@ const ownerBadge: Record<Queue['ownerType'], { label: string; color: string }> =
   assistant: { label: '🤖 Assistant', color: 'bg-purple-500/20 text-purple-300' },
 };
 
-export function QueueColumn({ queue, tasks, onAddTask }: QueueColumnProps) {
+export function QueueColumn({ queue, tasks, onAddTask, onSelectTask }: QueueColumnProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: queue.id,
     data: { queue },
@@ -50,7 +51,7 @@ export function QueueColumn({ queue, tasks, onAddTask }: QueueColumnProps) {
       {/* Task list */}
       <div ref={setNodeRef} className="flex min-h-[100px] flex-1 flex-col gap-2 p-2">
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskCard key={task.id} task={task} onSelect={onSelectTask} />
         ))}
         {tasks.length === 0 && (
           <div className="flex flex-1 items-center justify-center text-xs text-slate-600">

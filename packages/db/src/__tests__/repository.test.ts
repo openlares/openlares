@@ -17,6 +17,8 @@ import {
   claimTask,
   completeTask,
   failTask,
+  updateTask,
+  deleteTask,
   getNextClaimableTask,
   getTaskHistory,
   seedDefaultDashboard,
@@ -228,6 +230,47 @@ describe('Tasks', () => {
     claimTask(db, task.id, 'main', 'session-1');
     const again = claimTask(db, task.id, 'main', 'session-2');
     expect(again).toBeNull();
+  });
+
+  it('updates a task title and description', () => {
+    const task = createTask(db, { dashboardId, queueId: todoId, title: 'Original' });
+    const updated = updateTask(db, task.id, { title: 'Changed', description: 'New desc' });
+    expect(updated?.title).toBe('Changed');
+    expect(updated?.description).toBe('New desc');
+  });
+
+  it('updates only specified fields', () => {
+    const task = createTask(db, {
+      dashboardId,
+      queueId: todoId,
+      title: 'Keep',
+      priority: 5,
+    });
+    const updated = updateTask(db, task.id, { priority: 10 });
+    expect(updated?.title).toBe('Keep');
+    expect(updated?.priority).toBe(10);
+  });
+
+  it('returns null when updating non-existent task', () => {
+    expect(updateTask(db, 'nope', { title: 'X' })).toBeNull();
+  });
+
+  it('deletes a task', () => {
+    const task = createTask(db, { dashboardId, queueId: todoId, title: 'Delete me' });
+    expect(deleteTask(db, task.id)).toBe(true);
+    expect(getTask(db, task.id)).toBeUndefined();
+  });
+
+  it('returns false when deleting non-existent task', () => {
+    expect(deleteTask(db, 'nope')).toBe(false);
+  });
+
+  it('delete cascades to history', () => {
+    const task = createTask(db, { dashboardId, queueId: todoId, title: 'Track' });
+    moveTask(db, task.id, inProgressId, 'human');
+    expect(getTaskHistory(db, task.id)).toHaveLength(1);
+    deleteTask(db, task.id);
+    expect(getTaskHistory(db, task.id)).toHaveLength(0);
   });
 });
 

@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { QueueColumn } from './queue-column';
+import { TaskDetail } from './task-detail';
 import type { Dashboard, Queue, Task, Transition } from './types';
 
 interface KanbanBoardProps {
@@ -22,6 +23,7 @@ export function KanbanBoard({
   const [tasks, setTasks] = useState(initialTasks);
   const [transitions] = useState(initialTransitions);
   const [showAddModal, setShowAddModal] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
 
@@ -119,6 +121,18 @@ export function KanbanBoard({
     [dashboard.id, showAddModal, newTitle, newDescription],
   );
 
+  // Handle task update from detail panel
+  const handleUpdateTask = useCallback((updated: Task) => {
+    setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    setSelectedTask(null);
+  }, []);
+
+  // Handle task deletion
+  const handleDeleteTask = useCallback((taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    setSelectedTask(null);
+  }, []);
+
   return (
     <div className="flex h-full flex-col">
       {/* Board header */}
@@ -136,6 +150,7 @@ export function KanbanBoard({
               queue={queue}
               tasks={tasksByQueue[queue.id] ?? []}
               onAddTask={(queueId) => setShowAddModal(queueId)}
+              onSelectTask={setSelectedTask}
             />
           ))}
         </DndContext>
@@ -190,6 +205,17 @@ export function KanbanBoard({
             </div>
           </form>
         </div>
+      )}
+
+      {/* Task detail modal */}
+      {selectedTask && (
+        <TaskDetail
+          task={selectedTask}
+          queue={queues.find((q) => q.id === selectedTask.queueId)}
+          onClose={() => setSelectedTask(null)}
+          onUpdate={handleUpdateTask}
+          onDelete={handleDeleteTask}
+        />
       )}
     </div>
   );

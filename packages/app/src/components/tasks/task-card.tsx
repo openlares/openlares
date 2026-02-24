@@ -1,10 +1,12 @@
 'use client';
 
+import { useRef, useCallback } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { Task } from './types';
 
 interface TaskCardProps {
   task: Task;
+  onSelect?: (task: Task) => void;
 }
 
 const statusColors: Record<Task['status'], string> = {
@@ -21,11 +23,36 @@ const statusIcons: Record<Task['status'], string> = {
   failed: '❌',
 };
 
-export function TaskCard({ task }: TaskCardProps) {
+export function TaskCard({ task, onSelect }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { task },
   });
+
+  // Track mouse down position to distinguish click from drag
+  const mouseDown = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      mouseDown.current = { x: e.clientX, y: e.clientY };
+      listeners?.onPointerDown?.(e);
+    },
+    [listeners],
+  );
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!mouseDown.current) return;
+      const dx = Math.abs(e.clientX - mouseDown.current.x);
+      const dy = Math.abs(e.clientY - mouseDown.current.y);
+      mouseDown.current = null;
+      // Only open detail if it wasn't a drag (< activation distance)
+      if (dx < 8 && dy < 8) {
+        onSelect?.(task);
+      }
+    },
+    [task, onSelect],
+  );
 
   const style = transform
     ? {
@@ -39,6 +66,8 @@ export function TaskCard({ task }: TaskCardProps) {
       style={style}
       {...listeners}
       {...attributes}
+      onPointerDown={handlePointerDown}
+      onClick={handleClick}
       className={`rounded-lg border-l-4 ${statusColors[task.status]} bg-slate-800/80 p-3 shadow-md transition-shadow hover:shadow-lg ${
         isDragging ? 'z-50 opacity-75 shadow-xl' : ''
       } cursor-grab active:cursor-grabbing`}
