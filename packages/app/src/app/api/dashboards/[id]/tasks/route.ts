@@ -1,11 +1,35 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { listDashboardTasks, createTask } from '@openlares/db';
+import type { Task } from '@/components/tasks/types';
+
+/** Convert Drizzle task row (Date fields) to client-safe JSON (number ms). */
+function serializeTask(raw: {
+  id: string;
+  dashboardId: string;
+  queueId: string;
+  title: string;
+  description: string | null;
+  priority: number;
+  status: 'pending' | 'executing' | 'completed' | 'failed';
+  sessionKey: string | null;
+  assignedAgent: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt: Date | null;
+}): Task {
+  return {
+    ...raw,
+    createdAt: raw.createdAt.getTime(),
+    updatedAt: raw.updatedAt.getTime(),
+    completedAt: raw.completedAt?.getTime() ?? null,
+  };
+}
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  return NextResponse.json(listDashboardTasks(db, id));
+  return NextResponse.json(listDashboardTasks(db, id).map(serializeTask));
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -29,5 +53,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     description: body.description,
     priority: body.priority,
   });
-  return NextResponse.json(task, { status: 201 });
+  return NextResponse.json(serializeTask(task), { status: 201 });
 }

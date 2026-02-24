@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { QueueColumn } from './queue-column';
 import { TaskDetail } from './task-detail';
@@ -26,8 +26,68 @@ export function KanbanBoard({
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [executorRunning, setExecutorRunning] = useState(false);
+  const [executorTaskId, setExecutorTaskId] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  // Poll executor status + refresh tasks
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkStatus() {
+      try {
+        // Executor status
+        const statusRes = await fetch('/api/executor');
+        if (statusRes.ok && !cancelled) {
+          const data = (await statusRes.json()) as {
+            running: boolean;
+            currentTaskId: string | null;
+          };
+          setExecutorRunning(data.running);
+          setExecutorTaskId(data.currentTaskId);
+        }
+
+        // Refresh tasks (agent may have moved them)
+        const tasksRes = await fetch(`/api/dashboards/${dashboard.id}/tasks`);
+        if (tasksRes.ok && !cancelled) {
+          const freshTasks = (await tasksRes.json()) as Task[];
+          setTasks(freshTasks);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    void checkStatus();
+    const timer = setInterval(checkStatus, 5_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [dashboard.id]);
+
+  const toggleExecutor = useCallback(async () => {
+    try {
+      const res = await fetch('/api/executor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          executorRunning
+            ? { action: 'stop' }
+            : { action: 'start', dashboardId: dashboard.id },
+        ),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { running: boolean; currentTaskId: string | null };
+        setExecutorRunning(data.running);
+        setExecutorTaskId(data.currentTaskId);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [executorRunning, dashboard.id]);
 
   // Group tasks by queue
   const tasksByQueue = queues.reduce(
@@ -137,8 +197,28 @@ export function KanbanBoard({
     <div className="flex h-full flex-col">
       {/* Board header */}
       <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-3">
-        <h2 className="text-lg font-semibold text-slate-100">{dashboard.name}</h2>
-        <span className="text-xs text-slate-500">{tasks.length} tasks</span>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold text-slate-100">{dashboard.name}</h2>
+          <span className="text-xs text-slate-500">{tasks.length} tasks</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {executorTaskId && (
+            <span className="flex items-center gap-1.5 text-xs text-cyan-400">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
+              Working...
+            </span>
+          )}
+          <button
+            onClick={toggleExecutor}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              executorRunning
+                ? 'bg-red-600/20 text-red-300 hover:bg-red-600/30'
+                : 'bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30'
+            }`}
+          >
+            {executorRunning ? '⏹ Stop Agent' : '▶ Start Agent'}
+          </button>
+        </div>
       </div>
 
       {/* Columns */}

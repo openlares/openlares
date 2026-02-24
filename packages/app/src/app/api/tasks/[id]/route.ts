@@ -6,10 +6,34 @@ import {
   claimTask,
   completeTask,
   failTask,
-  getTaskHistory,
   updateTask,
   deleteTask,
+  getTaskHistory,
 } from '@openlares/db';
+import type { Task } from '@/components/tasks/types';
+
+/** Convert Drizzle task row (Date fields) to client-safe JSON (number ms). */
+function serializeTask(raw: {
+  id: string;
+  dashboardId: string;
+  queueId: string;
+  title: string;
+  description: string | null;
+  priority: number;
+  status: 'pending' | 'executing' | 'completed' | 'failed';
+  sessionKey: string | null;
+  assignedAgent: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt: Date | null;
+}): Task {
+  return {
+    ...raw,
+    createdAt: raw.createdAt.getTime(),
+    updatedAt: raw.updatedAt.getTime(),
+    completedAt: raw.completedAt?.getTime() ?? null,
+  };
+}
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,7 +41,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const task = getTask(db, id);
   if (!task) return NextResponse.json({ error: 'not found' }, { status: 404 });
   const history = getTaskHistory(db, id);
-  return NextResponse.json({ ...task, history });
+  return NextResponse.json({ ...serializeTask(task), history });
 }
 
 /**
@@ -28,6 +52,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  *   { action: "claim", agentId, sessionKey }
  *   { action: "complete" }
  *   { action: "fail" }
+ *   { action: "update", title?, description?, priority? }
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -49,7 +74,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!result) {
         return NextResponse.json({ error: 'invalid transition' }, { status: 422 });
       }
-      return NextResponse.json(result);
+      return NextResponse.json(serializeTask(result));
     }
 
     case 'claim': {
@@ -60,19 +85,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!result) {
         return NextResponse.json({ error: 'task not claimable' }, { status: 422 });
       }
-      return NextResponse.json(result);
+      return NextResponse.json(serializeTask(result));
     }
 
     case 'complete': {
       const result = completeTask(db, id);
       if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
-      return NextResponse.json(result);
+      return NextResponse.json(serializeTask(result));
     }
 
     case 'fail': {
       const result = failTask(db, id);
       if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
-      return NextResponse.json(result);
+      return NextResponse.json(serializeTask(result));
     }
 
     case 'update': {
@@ -82,7 +107,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         priority: typeof body.priority === 'number' ? body.priority : undefined,
       });
       if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
-      return NextResponse.json(result);
+      return NextResponse.json(serializeTask(result));
     }
 
     default:
