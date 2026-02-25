@@ -52,9 +52,10 @@ export function KanbanBoard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedTask, showAddModal, showConfig]);
 
-  // Poll executor status + refresh tasks
+  // Poll executor status + refresh tasks (only poll continuously when executor is running)
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
 
     async function checkStatus() {
       try {
@@ -67,27 +68,32 @@ export function KanbanBoard({
           };
           setExecutorRunning(data.running);
           setExecutorTaskId(data.currentTaskId);
-        }
 
-        // Refresh tasks (agent may have moved them)
-        const tasksRes = await fetch(`/api/dashboards/${dashboard.id}/tasks`);
-        if (tasksRes.ok && !cancelled) {
-          const freshTasks = (await tasksRes.json()) as Task[];
-          setTasks(freshTasks);
+          // Only refresh tasks when executor is running
+          if (data.running) {
+            const tasksRes = await fetch(`/api/dashboards/${dashboard.id}/tasks`);
+            if (tasksRes.ok && !cancelled) {
+              const freshTasks = (await tasksRes.json()) as Task[];
+              setTasks(freshTasks);
+            }
+          }
         }
       } catch {
         /* ignore */
       }
     }
 
+    // Initial check
     void checkStatus();
-    const timer = setInterval(checkStatus, 5_000);
+
+    // Poll every 5s only when executor is running, otherwise check every 30s
+    timer = setInterval(checkStatus, executorRunning ? 5_000 : 30_000);
 
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
     };
-  }, [dashboard.id]);
+  }, [dashboard.id, executorRunning]);
 
   const toggleExecutor = useCallback(async () => {
     try {
