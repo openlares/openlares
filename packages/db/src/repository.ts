@@ -433,3 +433,56 @@ export function seedDefaultDashboard(db: OpenlareDb) {
 
   return dashboard;
 }
+
+// ---------------------------------------------------------------------------
+// Queue delete + reorder
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete a queue by ID.
+ * - Refuses if the queue still has tasks (returns false).
+ * - Refuses if this is the last queue in the dashboard (returns false).
+ * - Cascades to transitions (handled by FK ON DELETE CASCADE in schema).
+ */
+export function deleteQueue(db: OpenlareDb, queueId: string): boolean {
+  const queue = getQueue(db, queueId);
+  if (!queue) return false;
+
+  // Safety: don't allow deleting the last queue in a dashboard
+  const dashboardQueues = listQueues(db, queue.dashboardId);
+  if (dashboardQueues.length <= 1) return false;
+
+  // Refuse if queue has tasks
+  const queueTasks = listTasks(db, queueId);
+  if (queueTasks.length > 0) return false;
+
+  db.delete(queues).where(eq(queues.id, queueId)).run();
+  return true;
+}
+
+/**
+ * Delete a transition by ID.
+ * Returns true if deleted, false if not found.
+ */
+export function deleteTransition(db: OpenlareDb, transitionId: string): boolean {
+  const existing = db.select().from(transitions).where(eq(transitions.id, transitionId)).get();
+  if (!existing) return false;
+
+  db.delete(transitions).where(eq(transitions.id, transitionId)).run();
+  return true;
+}
+
+/**
+ * Batch-update queue positions for reordering.
+ * Wraps all updates in a transaction.
+ */
+export function updateQueuePositions(
+  db: OpenlareDb,
+  updates: Array<{ id: string; position: number }>,
+): void {
+  db.transaction((tx) => {
+    for (const { id, position } of updates) {
+      tx.update(queues).set({ position, updatedAt: now() }).where(eq(queues.id, id)).run();
+    }
+  });
+}

@@ -28,6 +28,18 @@ export function DashboardConfig({
   const [newQueueName, setNewQueueName] = useState('');
   const [newQueueOwner, setNewQueueOwner] = useState<Queue['ownerType']>('human');
   const [error, setError] = useState<string | null>(null);
+  const [deletingQueueId, setDeletingQueueId] = useState<string | null>(null);
+  const [deletingTransitionId, setDeletingTransitionId] = useState<string | null>(null);
+
+  /** Refetch queues + transitions from API. */
+  const refetch = useCallback(async () => {
+    const qRes = await fetch(`/api/dashboards/${dashboard.id}/queues`);
+    if (qRes.ok) {
+      const qData = (await qRes.json()) as { queues: Queue[]; transitions: Transition[] };
+      setQueues(qData.queues);
+      setTransitions(qData.transitions);
+    }
+  }, [dashboard.id]);
 
   // Add a new queue
   const handleAddQueue = useCallback(async () => {
@@ -46,13 +58,7 @@ export function DashboardConfig({
       });
 
       if (res.ok) {
-        // Refetch all queues + transitions to get correct state
-        const qRes = await fetch(`/api/dashboards/${dashboard.id}/queues`);
-        if (qRes.ok) {
-          const qData = (await qRes.json()) as { queues: Queue[]; transitions: Transition[] };
-          setQueues(qData.queues);
-          setTransitions(qData.transitions);
-        }
+        await refetch();
         setNewQueueName('');
       } else {
         const errData = (await res.json()) as { error?: string };
@@ -61,7 +67,75 @@ export function DashboardConfig({
     } catch {
       setError('Network error');
     }
-  }, [dashboard.id, newQueueName, newQueueOwner, queues.length]);
+  }, [dashboard.id, newQueueName, newQueueOwner, queues.length, refetch]);
+
+  // Delete a queue (with confirmation)
+  const handleDeleteQueue = useCallback(
+    async (queueId: string) => {
+      setError(null);
+      try {
+        const res = await fetch(`/api/queues/${queueId}`, { method: 'DELETE' });
+        if (res.ok) {
+          await refetch();
+        } else {
+          const errData = (await res.json()) as { error?: string };
+          setError(errData.error ?? 'Failed to delete queue');
+        }
+      } catch {
+        setError('Network error');
+      } finally {
+        setDeletingQueueId(null);
+      }
+    },
+    [refetch],
+  );
+
+  // Move a queue up or down
+  const handleMoveQueue = useCallback(
+    async (index: number, direction: 'up' | 'down') => {
+      const sorted = [...queues].sort((a, b) => a.position - b.position);
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= sorted.length) return;
+
+      // Swap positions
+      const a = sorted[index]!;
+      const b = sorted[targetIndex]!;
+      const aPos = a.position;
+      const bPos = b.position;
+
+      // Optimistic update
+      const updated = sorted.map((q) => {
+        if (q.id === a.id) return { ...q, position: bPos };
+        if (q.id === b.id) return { ...q, position: aPos };
+        return q;
+      });
+      setQueues(updated.sort((x, y) => x.position - y.position));
+
+      // Persist
+      setError(null);
+      try {
+        const res = await fetch(`/api/dashboards/${dashboard.id}/queues`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            positions: [
+              { id: a.id, position: bPos },
+              { id: b.id, position: aPos },
+            ],
+          }),
+        });
+        if (!res.ok) {
+          const errData = (await res.json()) as { error?: string };
+          setError(errData.error ?? 'Failed to reorder queues');
+          await refetch(); // Roll back optimistic update
+        }
+      } catch {
+        setError('Network error');
+        await refetch();
+      }
+    },
+    [queues, dashboard.id, refetch],
+  );
 
   // Add transition
   const handleAddTransition = useCallback(
@@ -74,24 +148,44 @@ export function DashboardConfig({
           body: JSON.stringify({ fromQueueId: fromId, toQueueId: toId, actorType }),
         });
         if (res.ok) {
-          // Refetch transitions
-          const qRes = await fetch(`/api/dashboards/${dashboard.id}/queues`);
-          if (qRes.ok) {
-            const qData = (await qRes.json()) as { queues: Queue[]; transitions: Transition[] };
-            setTransitions(qData.transitions);
-          }
+          await refetch();
+        } else {
+          setError('Failed to add transition');
         }
       } catch {
         setError('Failed to add transition');
       }
     },
-    [dashboard.id],
+    [dashboard.id, refetch],
+  );
+
+  // Delete a transition (with confirmation)
+  const handleDeleteTransition = useCallback(
+    async (transitionId: string) => {
+      setError(null);
+      try {
+        const res = await fetch(`/api/transitions/${transitionId}`, { method: 'DELETE' });
+        if (res.ok) {
+          await refetch();
+        } else {
+          const errData = (await res.json()) as { error?: string };
+          setError(errData.error ?? 'Failed to delete transition');
+        }
+      } catch {
+        setError('Network error');
+      } finally {
+        setDeletingTransitionId(null);
+      }
+    },
+    [refetch],
   );
 
   const handleSave = useCallback(() => {
     onQueuesChange(queues, transitions);
     onClose();
   }, [queues, transitions, onQueuesChange, onClose]);
+
+  const sortedQueues = [...queues].sort((a, b) => a.position - b.position);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[5vh]">
@@ -114,11 +208,31 @@ export function DashboardConfig({
           {/* Queues */}
           <h4 className="mb-3 text-sm font-semibold text-slate-200">Queues (columns)</h4>
           <div className="mb-4 space-y-2">
-            {queues.map((queue, idx) => (
+            {sortedQueues.map((queue, idx) => (
               <div
                 key={queue.id}
                 className="flex items-center gap-3 rounded-lg bg-slate-700/30 px-3 py-2"
               >
+                {/* Reorder arrows */}
+                <div className="flex flex-col">
+                  <button
+                    onClick={() => void handleMoveQueue(idx, 'up')}
+                    disabled={idx === 0}
+                    className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
+                    title="Move up"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => void handleMoveQueue(idx, 'down')}
+                    disabled={idx === sortedQueues.length - 1}
+                    className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
+                    title="Move down"
+                  >
+                    ▼
+                  </button>
+                </div>
+
                 <span className="w-6 text-center text-xs text-slate-500">{idx + 1}</span>
                 <span className="flex-1 text-sm text-slate-200">{queue.name}</span>
                 <span
@@ -133,6 +247,33 @@ export function DashboardConfig({
                 <span className="text-xs text-slate-500">
                   limit: {queue.agentLimit === 0 ? '∞' : queue.agentLimit}
                 </span>
+
+                {/* Delete button with confirmation */}
+                {deletingQueueId === queue.id ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-red-400">Delete?</span>
+                    <button
+                      onClick={() => void handleDeleteQueue(queue.id)}
+                      className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/40"
+                    >
+                      Yes
+                    </button>
+                    <button
+                      onClick={() => setDeletingQueueId(null)}
+                      className="rounded bg-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-500"
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setDeletingQueueId(queue.id)}
+                    title="Delete queue"
+                    className="text-slate-500 hover:text-red-400"
+                  >
+                    🗑️
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -200,6 +341,33 @@ export function DashboardConfig({
                     {t.actorType === 'human' ? '👤' : t.actorType === 'assistant' ? '🤖' : '👤🤖'}{' '}
                     {t.actorType}
                   </span>
+
+                  {/* Delete transition with confirmation */}
+                  {deletingTransitionId === t.id ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-red-400">Delete?</span>
+                      <button
+                        onClick={() => void handleDeleteTransition(t.id)}
+                        className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/40"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setDeletingTransitionId(null)}
+                        className="rounded bg-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-500"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeletingTransitionId(t.id)}
+                      title="Delete transition"
+                      className="text-slate-500 hover:text-red-400"
+                    >
+                      🗑️
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -209,7 +377,9 @@ export function DashboardConfig({
           </div>
 
           {/* Quick add transition */}
-          {queues.length >= 2 && <TransitionAdder queues={queues} onAdd={handleAddTransition} />}
+          {queues.length >= 2 && (
+            <TransitionAdder queues={sortedQueues} onAdd={handleAddTransition} />
+          )}
         </div>
 
         {/* Footer */}
