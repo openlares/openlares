@@ -6,6 +6,7 @@
  */
 
 import { getDb } from './db';
+import { emit } from './task-events';
 import {
   getNextClaimableTask,
   claimTask,
@@ -97,6 +98,7 @@ export function getExecutorStatus() {
 export function startExecutor(dashboardId: string): void {
   if (state.running) return;
   state.running = true;
+  emit({ type: 'executor:started', timestamp: Date.now() });
   pollForWork(dashboardId);
 }
 
@@ -110,6 +112,7 @@ export function stopExecutor(): void {
     clearTimeout(state.monitorTimer);
     state.monitorTimer = null;
   }
+  emit({ type: 'executor:stopped', timestamp: Date.now() });
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +138,7 @@ function pollForWork(dashboardId: string): void {
     if (claimed) {
       state.currentTaskId = task.id;
       state.currentSessionKey = sessionKey;
+      emit({ type: 'task:claimed', taskId: task.id, timestamp: Date.now() });
 
       // Fire and forget — dispatch async, don't await
       void dispatchTask(db, claimed, sessionKey, dashboardId);
@@ -167,6 +171,7 @@ async function dispatchTask(
   } catch (err) {
     console.error(`[task-executor] Failed to dispatch task ${task.id}:`, err);
     failTask(db, task.id);
+    emit({ type: 'task:failed', taskId: task.id, timestamp: Date.now() });
     state.currentTaskId = null;
     state.currentSessionKey = null;
   }
@@ -232,8 +237,10 @@ async function checkSessionCompletion(
 
           if (nextTransition) {
             moveTask(db, taskId, nextTransition.toQueueId, AGENT_ID, 'Auto-completed by agent');
+            emit({ type: 'task:moved', taskId, timestamp: Date.now() });
           }
           completeTask(db, taskId);
+          emit({ type: 'task:completed', taskId, timestamp: Date.now() });
         }
 
         state.currentTaskId = null;

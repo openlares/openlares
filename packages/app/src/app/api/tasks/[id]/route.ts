@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { emit } from '@/lib/task-events';
 import {
   getTask,
   moveTask,
@@ -77,6 +78,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!result) {
         return NextResponse.json({ error: 'invalid transition' }, { status: 422 });
       }
+      emit({ type: 'task:moved', taskId: id, timestamp: Date.now() });
       return NextResponse.json(serializeTask(result));
     }
 
@@ -94,12 +96,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     case 'complete': {
       const result = completeTask(db, id);
       if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
+      emit({ type: 'task:completed', taskId: id, timestamp: Date.now() });
       return NextResponse.json(serializeTask(result));
     }
 
     case 'fail': {
       const result = failTask(db, id);
       if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
+      emit({ type: 'task:failed', taskId: id, timestamp: Date.now() });
       return NextResponse.json(serializeTask(result));
     }
 
@@ -110,6 +114,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         priority: typeof body.priority === 'number' ? body.priority : undefined,
       });
       if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
+      emit({ type: 'task:updated', taskId: id, timestamp: Date.now() });
       return NextResponse.json(serializeTask(result));
     }
 
@@ -126,5 +131,6 @@ export async function DELETE(
   const db = getDb();
   const deleted = deleteTask(db, id);
   if (!deleted) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  emit({ type: 'task:deleted', taskId: id, timestamp: Date.now() });
   return NextResponse.json({ ok: true });
 }

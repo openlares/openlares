@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { emit } from '@/lib/task-events';
 import { listDashboardTasks, createTask } from '@openlares/db';
 import type { Task } from '@/components/tasks/types';
 
@@ -53,5 +54,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     description: body.description,
     priority: body.priority,
   });
+  emit({ type: 'task:created', taskId: task.id, timestamp: Date.now() });
   return NextResponse.json(serializeTask(task), { status: 201 });
 }

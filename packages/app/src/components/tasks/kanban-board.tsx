@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { QueueColumn } from './queue-column';
 import { TaskDetail } from './task-detail';
@@ -52,48 +52,104 @@ export function KanbanBoard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedTask, showAddModal, showConfig]);
 
-  // Poll executor status + refresh tasks (only poll continuously when executor is running)
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
+  // Ref to hold fallback poll interval so we can clear it when SSE reconnects
+  const fallbackPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    async function checkStatus() {
-      try {
-        // Executor status
-        const statusRes = await fetch('/api/executor');
-        if (statusRes.ok && !cancelled) {
-          const data = (await statusRes.json()) as {
-            running: boolean;
-            currentTaskId: string | null;
-          };
+  const refreshTasks = useCallback(() => {
+    fetch(`/api/dashboards/${dashboard.id}/tasks`)
+      .then((res) => (res.ok ? (res.json() as Promise<Task[]>) : null))
+      .then((freshTasks) => {
+        if (freshTasks) setTasks(freshTasks);
+      })
+      .catch(() => { /* ignore */ });
+  }, [dashboard.id]);
+
+  const refreshExecutorStatus = useCallback(() => {
+    fetch('/api/executor')
+      .then((res) => (res.ok ? (res.json() as Promise<{ running: boolean; currentTaskId: string | null }>) : null))
+      .then((data) => {
+        if (data) {
           setExecutorRunning(data.running);
           setExecutorTaskId(data.currentTaskId);
-
-          // Only refresh tasks when executor is running
-          if (data.running) {
-            const tasksRes = await fetch(`/api/dashboards/${dashboard.id}/tasks`);
-            if (tasksRes.ok && !cancelled) {
-              const freshTasks = (await tasksRes.json()) as Task[];
-              setTasks(freshTasks);
-            }
-          }
         }
-      } catch {
-        /* ignore */
+      })
+      .catch(() => { /* ignore */ });
+  }, []);
+
+  // SSE subscription with fallback polling on error
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let cancelled = false;
+
+    function startFallbackPoll() {
+      if (fallbackPollRef.current) return; // already polling
+      fallbackPollRef.current = setInterval(() => {
+        refreshExecutorStatus();
+        refreshTasks();
+      }, 30_000);
+    }
+
+    function stopFallbackPoll() {
+      if (fallbackPollRef.current) {
+        clearInterval(fallbackPollRef.current);
+        fallbackPollRef.current = null;
       }
     }
 
-    // Initial check
-    void checkStatus();
+    function connect() {
+      if (cancelled) return;
 
-    // Poll every 5s only when executor is running, otherwise check every 30s
-    timer = setInterval(checkStatus, executorRunning ? 5_000 : 30_000);
+      es = new EventSource('/api/executor/events');
+
+      es.onopen = () => {
+        stopFallbackPoll();
+      };
+
+      es.onmessage = (e: MessageEvent<string>) => {
+        if (cancelled) return;
+        let event: { type: string; running?: boolean; currentTaskId?: string | null };
+        try {
+          event = JSON.parse(e.data) as typeof event;
+        } catch {
+          return;
+        }
+
+        if (event.type === 'status') {
+          setExecutorRunning(event.running ?? false);
+          setExecutorTaskId(event.currentTaskId ?? null);
+          return;
+        }
+
+        // Any task or executor change — refetch tasks for a consistent view
+        if (event.type.startsWith('task:') || event.type === 'executor:started' || event.type === 'executor:stopped') {
+          refreshTasks();
+          if (event.type === 'executor:started') setExecutorRunning(true);
+          if (event.type === 'executor:stopped') {
+            setExecutorRunning(false);
+            setExecutorTaskId(null);
+          }
+        }
+      };
+
+      es.onerror = () => {
+        if (cancelled) return;
+        es?.close();
+        es = null;
+        // Fall back to 30s polling until SSE reconnects
+        startFallbackPoll();
+        // Retry SSE after 5s
+        setTimeout(connect, 5_000);
+      };
+    }
+
+    connect();
 
     return () => {
       cancelled = true;
-      if (timer) clearInterval(timer);
+      stopFallbackPoll();
+      es?.close();
     };
-  }, [dashboard.id, executorRunning]);
+  }, [dashboard.id, refreshTasks, refreshExecutorStatus]);
 
   const toggleExecutor = useCallback(async () => {
     try {
