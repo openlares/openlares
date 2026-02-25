@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import * as schema from '../schema.js';
+import * as schema from '../schema';
 import {
   createDashboard,
   getDashboard,
@@ -22,8 +22,8 @@ import {
   getNextClaimableTask,
   getTaskHistory,
   seedDefaultDashboard,
-} from '../repository.js';
-import type { OpenlareDb } from '../client.js';
+} from '../repository';
+import type { OpenlareDb } from '../client';
 
 // Use in-memory SQLite for tests
 function createTestDb(): OpenlareDb {

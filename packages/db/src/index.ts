@@ -1,5 +1,5 @@
-export { createDb } from './client.js';
-export type { OpenlareDb } from './client.js';
+export { createDb } from './client';
+export type { OpenlareDb } from './client';
 
-export * from './schema.js';
-export * from './repository.js';
+export * from './schema';
+export * from './repository';
