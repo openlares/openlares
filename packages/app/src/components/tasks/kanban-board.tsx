@@ -61,19 +61,25 @@ export function KanbanBoard({
       .then((freshTasks) => {
         if (freshTasks) setTasks(freshTasks);
       })
-      .catch(() => { /* ignore */ });
+      .catch(() => {
+        /* ignore */
+      });
   }, [dashboard.id]);
 
   const refreshExecutorStatus = useCallback(() => {
     fetch('/api/executor')
-      .then((res) => (res.ok ? (res.json() as Promise<{ running: boolean; currentTaskId: string | null }>) : null))
+      .then((res) =>
+        res.ok ? (res.json() as Promise<{ running: boolean; currentTaskId: string | null }>) : null,
+      )
       .then((data) => {
         if (data) {
           setExecutorRunning(data.running);
           setExecutorTaskId(data.currentTaskId);
         }
       })
-      .catch(() => { /* ignore */ });
+      .catch(() => {
+        /* ignore */
+      });
   }, []);
 
   // SSE subscription with fallback polling on error
@@ -121,7 +127,11 @@ export function KanbanBoard({
         }
 
         // Any task or executor change — refetch tasks for a consistent view
-        if (event.type.startsWith('task:') || event.type === 'executor:started' || event.type === 'executor:stopped') {
+        if (
+          event.type.startsWith('task:') ||
+          event.type === 'executor:started' ||
+          event.type === 'executor:stopped'
+        ) {
           refreshTasks();
           if (event.type === 'executor:started') setExecutorRunning(true);
           if (event.type === 'executor:stopped') {
@@ -157,9 +167,7 @@ export function KanbanBoard({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          executorRunning
-            ? { action: 'stop' }
-            : { action: 'start', dashboardId: dashboard.id },
+          executorRunning ? { action: 'stop' } : { action: 'start', dashboardId: dashboard.id },
         ),
       });
       if (res.ok) {
@@ -265,13 +273,10 @@ export function KanbanBoard({
   );
 
   // Handle queue/transition config changes
-  const handleQueuesChange = useCallback(
-    (_newQueues: Queue[], _newTransitions: Transition[]) => {
-      // Force page reload to get fresh server-side data
-      window.location.reload();
-    },
-    [],
-  );
+  const handleQueuesChange = useCallback((_newQueues: Queue[], _newTransitions: Transition[]) => {
+    // Force page reload to get fresh server-side data
+    window.location.reload();
+  }, []);
 
   // Handle task update from detail panel
   const handleUpdateTask = useCallback((updated: Task) => {

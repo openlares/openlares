@@ -19,7 +19,14 @@ const statusLabels: Record<Task['status'], { text: string; color: string }> = {
   failed: { text: 'Failed', color: 'bg-red-500/20 text-red-300' },
 };
 
-export function TaskDetail({ task, queue, queues = [], onClose, onUpdate, onDelete }: TaskDetailProps) {
+export function TaskDetail({
+  task,
+  queue,
+  queues = [],
+  onClose,
+  onUpdate,
+  onDelete,
+}: TaskDetailProps) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? '');
   const [priority, setPriority] = useState(task.priority);
@@ -29,7 +36,8 @@ export function TaskDetail({ task, queue, queues = [], onClose, onUpdate, onDele
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  const isDirty = title !== task.title || description !== (task.description ?? '') || priority !== task.priority;
+  const isDirty =
+    title !== task.title || description !== (task.description ?? '') || priority !== task.priority;
 
   // Fetch history on mount
   useEffect(() => {
@@ -45,11 +53,15 @@ export function TaskDetail({ task, queue, queues = [], onClose, onUpdate, onDele
           setHistory(data.history);
         }
       })
-      .catch(() => {/* ignore */})
+      .catch(() => {
+        /* ignore */
+      })
       .finally(() => {
         if (!cancelled) setHistoryLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [task.id]);
 
   const handleSave = useCallback(async () => {

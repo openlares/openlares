@@ -1,10 +1,5 @@
 import { getDb } from '@/lib/db';
-import {
-  listDashboards,
-  listQueues,
-  listDashboardTasks,
-  listTransitions,
-} from '@openlares/db';
+import { listDashboards, listQueues, listDashboardTasks, listTransitions } from '@openlares/db';
 import { KanbanBoard } from '@/components/tasks/kanban-board';
 import type { Dashboard, Queue, Task, Transition } from '@/components/tasks/types';
 
@@ -19,9 +14,7 @@ export default function TasksPage() {
       <div className="flex h-full flex-col items-center justify-center gap-4 text-slate-500">
         <div className="text-4xl">📋</div>
         <p className="text-lg">No dashboards yet</p>
-        <p className="text-sm">
-          A default dashboard will be created automatically on first load.
-        </p>
+        <p className="text-sm">A default dashboard will be created automatically on first load.</p>
       </div>
     );
   }
