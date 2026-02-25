@@ -6,6 +6,7 @@ import { QueueColumn } from './queue-column';
 import { TaskDetail } from './task-detail';
 import { DashboardConfig } from './dashboard-config';
 import type { Dashboard, Queue, Task, Transition } from './types';
+import { loadGatewayConfig } from '@/lib/storage';
 
 interface KanbanBoardProps {
   dashboard: Dashboard;
@@ -167,7 +168,23 @@ export function KanbanBoard({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          executorRunning ? { action: 'stop' } : { action: 'start', dashboardId: dashboard.id },
+          executorRunning
+            ? { action: 'stop' }
+            : (() => {
+                const gw = loadGatewayConfig();
+                return {
+                  action: 'start',
+                  dashboardId: dashboard.id,
+                  ...(gw
+                    ? {
+                        gatewayUrl: gw.url
+                          .replace('wss://', 'https://')
+                          .replace('ws://', 'http://'),
+                        gatewayToken: gw.auth,
+                      }
+                    : {}),
+                };
+              })(),
         ),
       });
       if (res.ok) {
