@@ -7,6 +7,7 @@ import type { Task } from './types';
 interface TaskCardProps {
   task: Task;
   onSelect?: (task: Task) => void;
+  onRetry?: (task: Task) => void;
 }
 
 const statusColors: Record<Task['status'], string> = {
@@ -23,7 +24,7 @@ const statusIcons: Record<Task['status'], string> = {
   failed: '❌',
 };
 
-export function TaskCard({ task, onSelect }: TaskCardProps) {
+export function TaskCard({ task, onSelect, onRetry }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { task },
@@ -96,6 +97,18 @@ export function TaskCard({ task, onSelect }: TaskCardProps) {
           </span>
         )}
       </div>
+
+      {task.status === 'failed' && onRetry && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRetry(task);
+          }}
+          className="mt-2 w-full rounded bg-amber-600/30 px-2 py-1 text-[11px] font-medium text-amber-300 transition-colors hover:bg-amber-600/50"
+        >
+          🔄 Retry
+        </button>
+      )}
     </div>
   );
 }

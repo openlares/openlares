@@ -292,6 +292,26 @@ export interface UpdateTaskInput {
   priority?: number;
 }
 
+/** Reset a failed/completed task back to pending so it can be retried. */
+export function resetTask(db: OpenlareDb, taskId: string): typeof tasks.$inferSelect | null {
+  const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+  if (!task) return null;
+  if (task.status !== 'failed' && task.status !== 'completed') return null;
+
+  const now = new Date();
+  db.update(tasks)
+    .set({
+      status: 'pending',
+      sessionKey: null,
+      assignedAgent: null,
+      completedAt: null,
+      updatedAt: now,
+    })
+    .where(eq(tasks.id, taskId))
+    .run();
+
+  return db.select().from(tasks).where(eq(tasks.id, taskId)).get() ?? null;
+}
 export function updateTask(
   db: OpenlareDb,
   taskId: string,

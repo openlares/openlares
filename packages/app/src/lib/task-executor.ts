@@ -52,51 +52,53 @@ const MONITOR_INTERVAL_MS = 3_000;
 const AGENT_ID = 'main';
 
 // ---------------------------------------------------------------------------
-// Gateway communication (server-side only)
+// Gateway communication (server-side, WebSocket)
 // ---------------------------------------------------------------------------
 
+import { GatewayClient } from '@openlares/api-client';
+
 let gatewayConfig: GatewayConfig | null = null;
+let gatewayClient: GatewayClient | null = null;
 
 export function configureGateway(config: GatewayConfig): void {
+  // Disconnect old client if config changed
+  if (
+    gatewayClient &&
+    gatewayConfig &&
+    (gatewayConfig.url !== config.url || gatewayConfig.token !== config.token)
+  ) {
+    gatewayClient.disconnect();
+    gatewayClient = null;
+  }
   gatewayConfig = config;
 }
 
-async function gatewayRpc(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+async function ensureGatewayConnected(): Promise<GatewayClient> {
   if (!gatewayConfig) throw new Error('Gateway not configured');
 
-  // Allow self-signed gateway certs (common in local/LAN setups)
-  const prevTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-  if (gatewayConfig.url.startsWith('https://')) {
+  if (gatewayClient) {
+    // Already connected
+    return gatewayClient;
+  }
+
+  // Allow self-signed certs for LAN setups
+  if (gatewayConfig.url.startsWith('wss://')) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   }
 
-  let res: Response;
-  try {
-    res = await fetch(gatewayConfig.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${gatewayConfig.token}`,
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: crypto.randomUUID(),
-        method,
-        params,
-      }),
-    });
-  } finally {
-    // Restore original TLS setting
-    if (prevTls === undefined) {
-      delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    } else {
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTls;
-    }
-  }
+  const client = new GatewayClient({
+    url: gatewayConfig.url,
+    token: gatewayConfig.token,
+  });
 
-  const data = (await res.json()) as { result?: unknown; error?: { message: string } };
-  if (data.error) throw new Error(`Gateway RPC error: ${data.error.message}`);
-  return data.result;
+  await client.connect();
+  gatewayClient = client;
+  return client;
+}
+
+async function gatewayRpc(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  const client = await ensureGatewayConnected();
+  return client.request(method, params);
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +122,10 @@ export function startExecutor(dashboardId: string): void {
 
 export function stopExecutor(): void {
   state.running = false;
+  if (gatewayClient) {
+    gatewayClient.disconnect();
+    gatewayClient = null;
+  }
   if (state.pollTimer) {
     clearTimeout(state.pollTimer);
     state.pollTimer = null;

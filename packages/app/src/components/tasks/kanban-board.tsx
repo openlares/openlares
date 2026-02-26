@@ -22,6 +22,10 @@ export function KanbanBoard({
   initialTransitions,
 }: KanbanBoardProps) {
   const [queues] = useState(initialQueues);
+  // Avoid hydration mismatch from @dnd-kit aria-describedby counters
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const [tasks, setTasks] = useState(initialTasks);
   const [transitions] = useState(initialTransitions);
   const [showAddModal, setShowAddModal] = useState<string | null>(null);
@@ -162,6 +166,24 @@ export function KanbanBoard({
     };
   }, [dashboard.id, refreshTasks, refreshExecutorStatus]);
 
+  const handleRetryTask = useCallback(
+    async (task: Task) => {
+      try {
+        const res = await fetch(`/api/tasks/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset' }),
+        });
+        if (res.ok) {
+          refreshTasks();
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [refreshTasks],
+  );
+
   const toggleExecutor = useCallback(async () => {
     try {
       const res = await fetch('/api/executor', {
@@ -177,9 +199,7 @@ export function KanbanBoard({
                   dashboardId: dashboard.id,
                   ...(gw
                     ? {
-                        gatewayUrl: gw.url
-                          .replace('wss://', 'https://')
-                          .replace('ws://', 'http://'),
+                        gatewayUrl: gw.url,
                         gatewayToken: gw.auth,
                       }
                     : {}),
@@ -343,17 +363,31 @@ export function KanbanBoard({
 
       {/* Columns */}
       <div className="flex flex-1 gap-4 overflow-x-auto p-4">
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          {queues.map((queue) => (
-            <QueueColumn
-              key={queue.id}
-              queue={queue}
-              tasks={tasksByQueue[queue.id] ?? []}
-              onAddTask={(queueId) => setShowAddModal(queueId)}
-              onSelectTask={setSelectedTask}
-            />
-          ))}
-        </DndContext>
+        {mounted ? (
+          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            {queues.map((queue) => (
+              <QueueColumn
+                key={queue.id}
+                queue={queue}
+                tasks={tasksByQueue[queue.id] ?? []}
+                onAddTask={(queueId) => setShowAddModal(queueId)}
+                onSelectTask={setSelectedTask}
+                onRetryTask={handleRetryTask}
+              />
+            ))}
+          </DndContext>
+        ) : (
+          <div className="flex flex-1 gap-4 overflow-x-auto">
+            {queues.map((queue) => (
+              <div
+                key={queue.id}
+                className="min-w-[280px] max-w-[320px] shrink-0 rounded-xl bg-slate-900/60 p-3"
+              >
+                <h3 className="text-sm font-semibold text-slate-200">{queue.name}</h3>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Add task modal */}
