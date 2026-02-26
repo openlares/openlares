@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { listQueues, createQueue, listTransitions } from '@openlares/db';
+import { listQueues, createQueue, listTransitions, updateQueuePositions } from '@openlares/db';
 import type { Queue, Transition } from '@/components/tasks/types';
 
 /** Serialize Drizzle queue row to client-safe JSON. */
@@ -75,4 +75,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     agentLimit: body.agentLimit,
   });
   return NextResponse.json(serializeQueue(queue), { status: 201 });
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: _dashboardId } = await params;
+  const body = (await request.json()) as { positions?: Array<{ id: string; position: number }> };
+
+  if (!Array.isArray(body.positions)) {
+    return NextResponse.json({ error: 'positions array required' }, { status: 400 });
+  }
+
+  const db = getDb();
+  updateQueuePositions(db, body.positions);
+  return NextResponse.json({ ok: true });
 }
