@@ -19,6 +19,9 @@ import {
   failTask,
   updateTask,
   deleteTask,
+  deleteQueue,
+  deleteTransition,
+  updateQueuePositions,
   getNextClaimableTask,
   getTaskHistory,
   seedDefaultDashboard,
@@ -344,5 +347,129 @@ describe('seedDefaultDashboard', () => {
     const first = seedDefaultDashboard(db);
     const second = seedDefaultDashboard(db);
     expect(second.id).toBe(first.id);
+  });
+});
+
+describe('deleteQueue', () => {
+  let db: OpenlareDb;
+  let dashboardId: string;
+  let todoId: string;
+  let inProgressId: string;
+  let doneId: string;
+
+  beforeEach(() => {
+    db = createTestDb();
+    dashboardId = createDashboard(db, { name: 'Board' }).id;
+    todoId = createQueue(db, { dashboardId, name: 'Todo', ownerType: 'human', position: 0 }).id;
+    inProgressId = createQueue(db, {
+      dashboardId,
+      name: 'In Progress',
+      ownerType: 'assistant',
+      position: 1,
+    }).id;
+    doneId = createQueue(db, { dashboardId, name: 'Done', ownerType: 'human', position: 2 }).id;
+    createTransition(db, { fromQueueId: todoId, toQueueId: inProgressId, actorType: 'human' });
+    createTransition(db, { fromQueueId: inProgressId, toQueueId: doneId, actorType: 'assistant' });
+  });
+
+  it('deletes a queue and cascades transitions', () => {
+    const deleted = deleteQueue(db, inProgressId);
+    expect(deleted).toBe(true);
+
+    const remaining = listQueues(db, dashboardId);
+    expect(remaining).toHaveLength(2);
+    expect(remaining.map((q) => q.id)).not.toContain(inProgressId);
+
+    // Transitions referencing the deleted queue should be gone (cascade)
+    const ts = listTransitions(db, dashboardId);
+    expect(ts).toHaveLength(0);
+  });
+
+  it('returns false when queue not found', () => {
+    expect(deleteQueue(db, 'nonexistent')).toBe(false);
+  });
+
+  it('refuses to delete the last queue in a dashboard', () => {
+    // Delete two of the three queues first (using the DB directly to bypass safety)
+    deleteQueue(db, inProgressId);
+    deleteQueue(db, doneId);
+    // Only todoId remains
+    const result = deleteQueue(db, todoId);
+    expect(result).toBe(false);
+    expect(listQueues(db, dashboardId)).toHaveLength(1);
+  });
+
+  it('refuses to delete a queue that has tasks', () => {
+    createTask(db, { dashboardId, queueId: todoId, title: 'Blocking task' });
+    const result = deleteQueue(db, todoId);
+    expect(result).toBe(false);
+    expect(listQueues(db, dashboardId)).toHaveLength(3);
+  });
+});
+
+describe('deleteTransition', () => {
+  let db: OpenlareDb;
+  let dashboardId: string;
+  let todoId: string;
+  let inProgressId: string;
+
+  beforeEach(() => {
+    db = createTestDb();
+    dashboardId = createDashboard(db, { name: 'Board' }).id;
+    todoId = createQueue(db, { dashboardId, name: 'Todo', ownerType: 'human', position: 0 }).id;
+    inProgressId = createQueue(db, {
+      dashboardId,
+      name: 'In Progress',
+      ownerType: 'assistant',
+      position: 1,
+    }).id;
+  });
+
+  it('deletes a transition', () => {
+    const t = createTransition(db, {
+      fromQueueId: todoId,
+      toQueueId: inProgressId,
+      actorType: 'human',
+    });
+    const deleted = deleteTransition(db, t.id);
+    expect(deleted).toBe(true);
+    expect(listTransitions(db, dashboardId)).toHaveLength(0);
+  });
+
+  it('returns false when transition not found', () => {
+    expect(deleteTransition(db, 'nonexistent')).toBe(false);
+  });
+});
+
+describe('updateQueuePositions', () => {
+  let db: OpenlareDb;
+  let dashboardId: string;
+  let q1Id: string;
+  let q2Id: string;
+  let q3Id: string;
+
+  beforeEach(() => {
+    db = createTestDb();
+    dashboardId = createDashboard(db, { name: 'Board' }).id;
+    q1Id = createQueue(db, { dashboardId, name: 'Q1', ownerType: 'human', position: 0 }).id;
+    q2Id = createQueue(db, { dashboardId, name: 'Q2', ownerType: 'human', position: 1 }).id;
+    q3Id = createQueue(db, { dashboardId, name: 'Q3', ownerType: 'human', position: 2 }).id;
+  });
+
+  it('batch-updates positions', () => {
+    updateQueuePositions(db, [
+      { id: q1Id, position: 2 },
+      { id: q2Id, position: 0 },
+      { id: q3Id, position: 1 },
+    ]);
+
+    const qs = listQueues(db, dashboardId);
+    expect(qs.map((q) => q.name)).toEqual(['Q2', 'Q3', 'Q1']);
+  });
+
+  it('is a no-op for empty array', () => {
+    updateQueuePositions(db, []);
+    const qs = listQueues(db, dashboardId);
+    expect(qs.map((q) => q.position)).toEqual([0, 1, 2]);
   });
 });

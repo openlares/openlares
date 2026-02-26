@@ -64,19 +64,35 @@ export function configureGateway(config: GatewayConfig): void {
 async function gatewayRpc(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
   if (!gatewayConfig) throw new Error('Gateway not configured');
 
-  const res = await fetch(gatewayConfig.url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${gatewayConfig.token}`,
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: crypto.randomUUID(),
-      method,
-      params,
-    }),
-  });
+  // Allow self-signed gateway certs (common in local/LAN setups)
+  const prevTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  if (gatewayConfig.url.startsWith('https://')) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(gatewayConfig.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${gatewayConfig.token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: crypto.randomUUID(),
+        method,
+        params,
+      }),
+    });
+  } finally {
+    // Restore original TLS setting
+    if (prevTls === undefined) {
+      delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    } else {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTls;
+    }
+  }
 
   const data = (await res.json()) as { result?: unknown; error?: { message: string } };
   if (data.error) throw new Error(`Gateway RPC error: ${data.error.message}`);
