@@ -197,12 +197,20 @@ export function TaskDetail({
             <div className="mb-4 rounded-lg bg-red-500/10 p-3 ring-1 ring-red-500/20">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-red-400">⚠️ Error</label>
-                <button
-                  onClick={handleClearError}
-                  className="rounded bg-red-600/20 px-2 py-0.5 text-xs text-red-300 hover:bg-red-600/30"
-                >
-                  Clear Error
-                </button>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => void navigator.clipboard.writeText(task.error ?? '')}
+                    className="rounded bg-slate-600/40 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-600/60"
+                  >
+                    Copy
+                  </button>
+                  <button
+                    onClick={handleClearError}
+                    className="rounded bg-red-600/20 px-2 py-0.5 text-xs text-red-300 hover:bg-red-600/30"
+                  >
+                    Clear Error
+                  </button>
+                </div>
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">{task.error}</p>
               {task.errorAt && (

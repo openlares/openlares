@@ -287,6 +287,44 @@ async function dispatchTask(
 }
 
 // ---------------------------------------------------------------------------
+// Pure helpers (exported for testing)
+// ---------------------------------------------------------------------------
+
+/** Extract plain text from assistant message content (string or content blocks). */
+export function extractContent(messageContent: unknown): string {
+  if (typeof messageContent === 'string') return messageContent;
+  if (Array.isArray(messageContent)) {
+    return (messageContent as Array<{ type: string; text?: string }>)
+      .filter((c) => c.type === 'text' && c.text)
+      .map((c) => c.text)
+      .join('\n');
+  }
+  return '';
+}
+
+/** Parse MOVE TO directive from content. Returns null if not found. */
+export function parseMoveDirective(content: string): string | null {
+  const match = content.match(/MOVE TO:\s*(.+?)$/im);
+  if (!match) return null;
+  return (match[1] ?? '').replace(/[^a-zA-Z0-9 _-]+$/g, '').trim() || null;
+}
+
+/** Extract agent response text (everything before MOVE TO:). */
+export function extractResponseText(messageContent: unknown): string | null {
+  if (typeof messageContent === 'string') {
+    return messageContent.replace(/MOVE TO:\s*.+$/im, '').trim() || null;
+  }
+  if (Array.isArray(messageContent)) {
+    const parts = (messageContent as Array<{ type: string; text?: string }>)
+      .filter((c) => c.type === 'text' && c.text)
+      .map((c) => c.text!.replace(/MOVE TO:\s*.+$/im, '').trim())
+      .filter(Boolean);
+    return parts.join('\n\n') || null;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Session monitor — check if agent finished
 // ---------------------------------------------------------------------------
 
@@ -319,15 +357,7 @@ async function checkSessionCompletion(
     const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
 
     if (lastAssistant) {
-      const content =
-        typeof lastAssistant.content === 'string'
-          ? lastAssistant.content
-          : Array.isArray(lastAssistant.content)
-            ? (lastAssistant.content as Array<{ type: string; text?: string }>)
-                .filter((c) => c.type === 'text' && c.text)
-                .map((c) => c.text)
-                .join('\n')
-            : JSON.stringify(lastAssistant.content);
+      const content = extractContent(lastAssistant.content);
 
       // Check timeout first
       if (state.dispatchTime && Date.now() - state.dispatchTime > EXECUTION_TIMEOUT_MS) {
@@ -359,16 +389,7 @@ async function checkSessionCompletion(
         const targetName = (moveMatch[1] ?? '').replace(/[^a-zA-Z0-9 _-]+$/, '').trim();
 
         // Extract agent response text (everything before MOVE TO:)
-        let resultText: string | null = null;
-        if (typeof lastAssistant.content === 'string') {
-          resultText = lastAssistant.content.replace(/MOVE TO:\s*.+$/im, '').trim() || null;
-        } else if (Array.isArray(lastAssistant.content)) {
-          const textParts = (lastAssistant.content as Array<{ type: string; text?: string }>)
-            .filter((c) => c.type === 'text' && c.text)
-            .map((c) => c.text!.replace(/MOVE TO:\s*.+$/im, '').trim())
-            .filter(Boolean);
-          resultText = textParts.join('\n\n') || null;
-        }
+        const resultText = extractResponseText(lastAssistant.content);
 
         // Save agent response as comment
         if (resultText) {
