@@ -17,6 +17,7 @@
 import type { ConnectionStatus } from '@openlares/core';
 import { getDeviceIdentity, signConnectChallenge } from './device-identity';
 import type { DeviceIdentity } from './device-identity';
+import WsWebSocket from 'ws';
 import type {
   ConnectChallengePayload,
   ConnectParams,
@@ -230,7 +231,10 @@ export class GatewayClient {
 
       try {
         const ws = this.origin
-          ? new WebSocket(this.url, { headers: { Origin: this.origin } } as never)
+          ? (new WsWebSocket(this.url, {
+              headers: { Origin: this.origin },
+              rejectUnauthorized: false,
+            }) as unknown as WebSocket)
           : new WebSocket(this.url);
         this.ws = ws;
 
