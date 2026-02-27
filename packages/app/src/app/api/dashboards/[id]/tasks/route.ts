@@ -12,19 +12,18 @@ function serializeTask(raw: {
   title: string;
   description: string | null;
   priority: number;
-  status: 'pending' | 'executing' | 'completed' | 'failed';
   sessionKey: string | null;
   assignedAgent: string | null;
-  result: string | null;
+  error: string | null;
+  errorAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  completedAt: Date | null;
 }): Task {
   return {
     ...raw,
+    errorAt: raw.errorAt?.getTime() ?? null,
     createdAt: raw.createdAt.getTime(),
     updatedAt: raw.updatedAt.getTime(),
-    completedAt: raw.completedAt?.getTime() ?? null,
   };
 }
 

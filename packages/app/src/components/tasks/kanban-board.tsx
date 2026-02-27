@@ -166,24 +166,6 @@ export function KanbanBoard({
     };
   }, [dashboard.id, refreshTasks, refreshExecutorStatus]);
 
-  const handleRetryTask = useCallback(
-    async (task: Task) => {
-      try {
-        const res = await fetch(`/api/tasks/${task.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reset' }),
-        });
-        if (res.ok) {
-          refreshTasks();
-        }
-      } catch {
-        /* ignore */
-      }
-    },
-    [refreshTasks],
-  );
-
   const toggleExecutor = useCallback(async () => {
     try {
       const res = await fetch('/api/executor', {
@@ -229,6 +211,8 @@ export function KanbanBoard({
   // Check if a transition is valid
   const canMove = useCallback(
     (fromQueueId: string, toQueueId: string): boolean => {
+      // When strict transitions are disabled, allow any move
+      if (!dashboard.config?.strictTransitions) return true;
       return transitions.some(
         (t) =>
           t.fromQueueId === fromQueueId &&
@@ -236,7 +220,7 @@ export function KanbanBoard({
           (t.actorType === 'human' || t.actorType === 'both'),
       );
     },
-    [transitions],
+    [dashboard.config?.strictTransitions, transitions],
   );
 
   // Handle drag end — move task between queues
@@ -460,7 +444,6 @@ export function KanbanBoard({
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdateTask}
           onDelete={handleDeleteTask}
-          onRetry={handleRetryTask}
         />
       )}
     </div>

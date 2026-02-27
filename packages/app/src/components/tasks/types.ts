@@ -3,7 +3,7 @@
 export interface Dashboard {
   id: string;
   name: string;
-  config: { maxConcurrentAgents?: number } | null;
+  config: { maxConcurrentAgents?: number; strictTransitions?: boolean } | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -37,13 +37,12 @@ export interface Task {
   title: string;
   description: string | null;
   priority: number;
-  status: 'pending' | 'executing' | 'completed' | 'failed';
   sessionKey: string | null;
   assignedAgent: string | null;
+  error: string | null;
+  errorAt: number | null;
   createdAt: number;
   updatedAt: number;
-  result: string | null;
-  completedAt: number | null;
 }
 
 export interface TaskComment {

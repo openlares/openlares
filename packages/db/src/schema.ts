@@ -21,6 +21,8 @@ export const dashboards = sqliteTable('dashboards', {
 });
 
 export interface DashboardConfig {
+  /** When true, only transitions defined in the transitions table are allowed. Default: false (free movement). */
+  strictTransitions?: boolean;
   /** Max concurrent agent tasks across the entire dashboard. */
   maxConcurrentAgents?: number;
 }
@@ -86,21 +88,18 @@ export const tasks = sqliteTable('tasks', {
     .references(() => queues.id),
   title: text('title').notNull(),
   description: text('description'),
-  /** Agent result / output when task completes. */
-  result: text('result'),
   /** Higher = more urgent. Default 0. */
   priority: integer('priority').notNull().default(0),
-  /** Execution status within the current queue. */
-  status: text('status', { enum: ['pending', 'executing', 'completed', 'failed'] })
-    .notNull()
-    .default('pending'),
   /** OpenClaw session key working on this task (null if not executing). */
   sessionKey: text('session_key'),
   /** Agent ID assigned to this task. */
   assignedAgent: text('assigned_agent'),
+  /** Error message if task failed. null = healthy, non-null = error. */
+  error: text('error'),
+  /** When the error occurred. */
+  errorAt: integer('error_at', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
 });
 
 // ---------------------------------------------------------------------------

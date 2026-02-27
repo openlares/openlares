@@ -9,20 +9,6 @@ interface TaskCardProps {
   onSelect?: (task: Task) => void;
 }
 
-const statusColors: Record<Task['status'], string> = {
-  pending: 'border-l-slate-500',
-  executing: 'border-l-cyan-400',
-  completed: 'border-l-emerald-400',
-  failed: 'border-l-red-400',
-};
-
-const statusIcons: Record<Task['status'], string> = {
-  pending: '⏳',
-  executing: '⚡',
-  completed: '✅',
-  failed: '❌',
-};
-
 export function TaskCard({ task, onSelect }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -60,6 +46,12 @@ export function TaskCard({ task, onSelect }: TaskCardProps) {
       }
     : undefined;
 
+  const borderColor = task.error
+    ? 'border-l-red-400'
+    : task.assignedAgent
+      ? 'border-l-cyan-400'
+      : 'border-l-slate-500';
+
   return (
     <div
       ref={setNodeRef}
@@ -68,21 +60,17 @@ export function TaskCard({ task, onSelect }: TaskCardProps) {
       {...attributes}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
-      className={`rounded-lg border-l-4 ${statusColors[task.status]} bg-slate-800/80 p-3 shadow-md transition-shadow hover:shadow-lg ${
+      className={`rounded-lg border-l-4 ${borderColor} bg-slate-800/80 p-3 shadow-md transition-shadow hover:shadow-lg ${
         isDragging ? 'z-50 opacity-75 shadow-xl' : ''
       } cursor-grab active:cursor-grabbing`}
     >
       <div className="flex items-start justify-between gap-2">
         <h4 className="text-sm font-medium text-slate-100">{task.title}</h4>
-        <span className="shrink-0 text-xs">{statusIcons[task.status]}</span>
+        {task.error && <span className="shrink-0 text-xs">⚠️</span>}
       </div>
 
       {task.description && (
         <p className="mt-1 line-clamp-2 text-xs text-slate-400">{task.description}</p>
-      )}
-
-      {task.result && (
-        <p className="mt-1 line-clamp-2 text-xs text-emerald-400/80">✔ {task.result}</p>
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -93,9 +81,7 @@ export function TaskCard({ task, onSelect }: TaskCardProps) {
         )}
         {task.assignedAgent && (
           <span className="flex items-center gap-1 rounded bg-cyan-500/20 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">
-            {task.status === 'executing' && (
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-            )}
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
             🤖 {task.assignedAgent}
           </span>
         )}
