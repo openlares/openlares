@@ -153,6 +153,16 @@ export function TaskDetail({
             className="mb-4 w-24 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
           />
 
+          {/* Result */}
+          {task.result && (
+            <div className="mb-4 rounded-lg bg-emerald-500/10 p-3 ring-1 ring-emerald-500/20">
+              <label className="mb-1 block text-xs font-medium text-emerald-400">
+                Agent Result
+              </label>
+              <p className="whitespace-pre-wrap text-sm text-slate-200">{task.result}</p>
+            </div>
+          )}
+
           {/* Metadata */}
           <div className="mb-4 space-y-1 text-xs text-slate-500">
             {task.assignedAgent && <p>Agent: {task.assignedAgent}</p>}

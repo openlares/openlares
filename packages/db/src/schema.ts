@@ -86,6 +86,8 @@ export const tasks = sqliteTable('tasks', {
     .references(() => queues.id),
   title: text('title').notNull(),
   description: text('description'),
+  /** Agent result / output when task completes. */
+  result: text('result'),
   /** Higher = more urgent. Default 0. */
   priority: integer('priority').notNull().default(0),
   /** Execution status within the current queue. */
