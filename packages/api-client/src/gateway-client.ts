@@ -233,8 +233,8 @@ export class GatewayClient {
         if (this.origin) {
           // Dynamic require to avoid bundling ws in browser builds.
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const WS = require('ws') as typeof import('ws');
-          ws = new WS.default(this.url, {
+          const WS = require('ws') as { new (url: string, opts?: object): WebSocket };
+          ws = new WS(this.url, {
             headers: { Origin: this.origin },
             rejectUnauthorized: false,
           }) as unknown as WebSocket;
