@@ -34,6 +34,8 @@ interface ExecutorState {
   dispatchTime: number | null;
   pollTimer: ReturnType<typeof setTimeout> | null;
   monitorTimer: ReturnType<typeof setTimeout> | null;
+  /** Content hash of the last processed assistant message (dedup guard). */
+  lastProcessedContent: string | null;
 }
 
 interface GatewayConfig {
@@ -55,6 +57,7 @@ if (!g.__executorState) {
     dispatchTime: null,
     pollTimer: null,
     monitorTimer: null,
+    lastProcessedContent: null,
   };
 }
 const state = g.__executorState;
@@ -281,6 +284,7 @@ async function dispatchTask(
     });
 
     state.dispatchTime = Date.now();
+    state.lastProcessedContent = null; // Reset dedup guard for fresh dispatch
 
     // Start monitoring this session
     monitorSession(db, task.id, sessionKey, dashboardId);
@@ -395,123 +399,136 @@ async function checkSessionCompletion(
         return;
       }
 
-      // Parse MOVE TO: <queue name> from content
-      const targetName = parseMoveDirective(content);
-      if (targetName) {
-        // Extract agent response text (everything before MOVE TO:)
-        const resultText = extractResponseText(lastAssistant.content);
+      // Dedup: skip if we already processed this exact message
+      if (content === state.lastProcessedContent) {
+        // Same content as last processed — agent hasn't sent a new response
+        // Keep polling, don't re-process
+      } else {
+        // Parse MOVE TO: <queue name> from content
+        const targetName = parseMoveDirective(content);
+        if (targetName) {
+          state.lastProcessedContent = content; // Mark as processed
+          // Extract agent response text (everything before MOVE TO:)
+          const resultText = extractResponseText(lastAssistant.content);
 
-        // Save agent response as comment
-        if (resultText) {
-          addComment(db, taskId, AGENT_ID, 'agent', resultText);
-          emit({ type: 'task:comment', taskId, timestamp: Date.now() });
-        }
+          // Save agent response as comment
+          if (resultText) {
+            addComment(db, taskId, AGENT_ID, 'agent', resultText);
+            emit({ type: 'task:comment', taskId, timestamp: Date.now() });
+          }
 
-        const task = getTask(db, taskId);
-        if (!task) {
-          state.currentTaskId = null;
-          state.currentSessionKey = null;
-          state.dispatchTime = null;
-          return;
-        }
+          const task = getTask(db, taskId);
+          if (!task) {
+            state.currentTaskId = null;
+            state.currentSessionKey = null;
+            state.dispatchTime = null;
+            return;
+          }
 
-        // Handle STUCK
-        if (targetName.toUpperCase() === 'STUCK') {
-          setTaskError(db, taskId, "Agent couldn't determine destination queue");
-          emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-          state.currentTaskId = null;
-          state.currentSessionKey = null;
-          state.dispatchTime = null;
-          return;
-        }
+          // Handle STUCK
+          if (targetName.toUpperCase() === 'STUCK') {
+            setTaskError(db, taskId, "Agent couldn't determine destination queue");
+            emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+            state.currentTaskId = null;
+            state.currentSessionKey = null;
+            state.dispatchTime = null;
+            return;
+          }
 
-        // Find target queue by name FIRST (case-insensitive).
-        // Must happen before the DONE fallback so that a real queue
-        // named "Done" is matched instead of hitting the fallback path.
-        const allQueues = listQueues(db, task.dashboardId);
-        const targetQueue = allQueues.find(
-          (q) => q.name.toLowerCase() === targetName.toLowerCase(),
-        );
-        const dashboardTransitions = listTransitions(db, task.dashboardId);
+          // Find target queue by name FIRST (case-insensitive).
+          // Must happen before the DONE fallback so that a real queue
+          // named "Done" is matched instead of hitting the fallback path.
+          const allQueues = listQueues(db, task.dashboardId);
+          const targetQueue = allQueues.find(
+            (q) => q.name.toLowerCase() === targetName.toLowerCase(),
+          );
+          const dashboardTransitions = listTransitions(db, task.dashboardId);
 
-        const dashConfig = getDashboard(db, task.dashboardId);
-        const strict = dashConfig?.config?.strictTransitions ?? false;
+          const dashConfig = getDashboard(db, task.dashboardId);
+          const strict = dashConfig?.config?.strictTransitions ?? false;
 
-        // Fallback: DONE with no matching queue (used when no destinations configured)
-        if (!targetQueue && targetName.toUpperCase() === 'DONE') {
-          releaseTask(db, taskId);
-          emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-          state.currentTaskId = null;
-          state.currentSessionKey = null;
-          state.dispatchTime = null;
-          return;
-        }
+          // Fallback: DONE with no matching queue (used when no destinations configured)
+          if (!targetQueue && targetName.toUpperCase() === 'DONE') {
+            releaseTask(db, taskId);
+            emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+            state.currentTaskId = null;
+            state.currentSessionKey = null;
+            state.dispatchTime = null;
+            return;
+          }
 
-        if (targetQueue) {
-          if (strict) {
-            // Validate transition exists under strict mode
-            const validTransition = dashboardTransitions.find(
-              (t) =>
-                t.fromQueueId === task.queueId &&
-                t.toQueueId === targetQueue.id &&
-                (t.actorType === 'assistant' || t.actorType === 'both'),
-            );
+          if (targetQueue) {
+            if (strict) {
+              // Validate transition exists under strict mode
+              const validTransition = dashboardTransitions.find(
+                (t) =>
+                  t.fromQueueId === task.queueId &&
+                  t.toQueueId === targetQueue.id &&
+                  (t.actorType === 'assistant' || t.actorType === 'both'),
+              );
 
-            if (validTransition) {
+              if (validTransition) {
+                moveTask(
+                  db,
+                  taskId,
+                  targetQueue.id,
+                  AGENT_ID,
+                  `Agent routed to ${targetQueue.name}`,
+                );
+                emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+              } else {
+                // Valid queue name but no transition — fallback
+                setTaskError(
+                  db,
+                  taskId,
+                  `No valid transition to "${targetQueue.name}" from current queue`,
+                );
+                emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+              }
+            } else {
+              // Free movement — just move it
               moveTask(db, taskId, targetQueue.id, AGENT_ID, `Agent routed to ${targetQueue.name}`);
               emit({ type: 'task:moved', taskId, timestamp: Date.now() });
-            } else {
-              // Valid queue name but no transition — fallback
-              setTaskError(
-                db,
-                taskId,
-                `No valid transition to "${targetQueue.name}" from current queue`,
-              );
-              emit({ type: 'task:updated', taskId, timestamp: Date.now() });
             }
           } else {
-            // Free movement — just move it
-            moveTask(db, taskId, targetQueue.id, AGENT_ID, `Agent routed to ${targetQueue.name}`);
-            emit({ type: 'task:moved', taskId, timestamp: Date.now() });
-          }
-        } else {
-          if (strict) {
-            // Unknown queue name — fallback to first reachable human queue via transitions
-            const humanTransition = dashboardTransitions.find(
-              (t) =>
-                t.fromQueueId === task.queueId &&
-                (t.actorType === 'assistant' || t.actorType === 'both') &&
-                allQueues.find((q) => q.id === t.toQueueId && q.ownerType === 'human'),
-            );
-            if (humanTransition) {
-              const fallbackQueue = allQueues.find((q) => q.id === humanTransition.toQueueId)!;
-              moveTask(
-                db,
-                taskId,
-                fallbackQueue.id,
-                AGENT_ID,
-                `Agent output: "${targetName}" (unknown queue, routed to ${fallbackQueue.name})`,
+            if (strict) {
+              // Unknown queue name — fallback to first reachable human queue via transitions
+              const humanTransition = dashboardTransitions.find(
+                (t) =>
+                  t.fromQueueId === task.queueId &&
+                  (t.actorType === 'assistant' || t.actorType === 'both') &&
+                  allQueues.find((q) => q.id === t.toQueueId && q.ownerType === 'human'),
               );
-              emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+              if (humanTransition) {
+                const fallbackQueue = allQueues.find((q) => q.id === humanTransition.toQueueId)!;
+                moveTask(
+                  db,
+                  taskId,
+                  fallbackQueue.id,
+                  AGENT_ID,
+                  `Agent output: "${targetName}" (unknown queue, routed to ${fallbackQueue.name})`,
+                );
+                emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+              } else {
+                setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
+                emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+              }
             } else {
+              // Free movement but unknown queue name — error
               setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
               emit({ type: 'task:updated', taskId, timestamp: Date.now() });
             }
-          } else {
-            // Free movement but unknown queue name — error
-            setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
-            emit({ type: 'task:updated', taskId, timestamp: Date.now() });
           }
+
+          releaseTask(db, taskId);
+          state.currentTaskId = null;
+          state.currentSessionKey = null;
+          state.dispatchTime = null;
+          state.lastProcessedContent = null;
+          return;
         }
-
-        releaseTask(db, taskId);
-        state.currentTaskId = null;
-        state.currentSessionKey = null;
-        state.dispatchTime = null;
-        return;
       }
-    }
-
+    } // end dedup else
     // No completion signal yet — keep polling
   } catch (err) {
     console.error(`[task-executor] Monitor error for task ${taskId}:`, err);
