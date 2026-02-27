@@ -41,13 +41,18 @@ interface GatewayConfig {
 // Singleton state
 // ---------------------------------------------------------------------------
 
-const state: ExecutorState = {
-  running: false,
-  currentTaskId: null,
-  currentSessionKey: null,
-  pollTimer: null,
-  monitorTimer: null,
-};
+// Persist state across HMR in dev mode
+const g = globalThis as unknown as { __executorState?: ExecutorState };
+if (!g.__executorState) {
+  g.__executorState = {
+    running: false,
+    currentTaskId: null,
+    currentSessionKey: null,
+    pollTimer: null,
+    monitorTimer: null,
+  };
+}
+const state = g.__executorState;
 
 const POLL_INTERVAL_MS = 5_000;
 const MONITOR_INTERVAL_MS = 3_000;
