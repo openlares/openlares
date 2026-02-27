@@ -265,6 +265,18 @@ async function checkSessionCompletion(
           : JSON.stringify(lastAssistant.content);
 
       if (content.includes('TASK COMPLETE')) {
+        // Extract readable text from the assistant's response
+        let resultText: string | null = null;
+        if (typeof lastAssistant.content === 'string') {
+          resultText = lastAssistant.content.replace(/TASK COMPLETE/gi, '').trim() || null;
+        } else if (Array.isArray(lastAssistant.content)) {
+          const textParts = (lastAssistant.content as Array<{ type: string; text?: string }>)
+            .filter((c) => c.type === 'text' && c.text)
+            .map((c) => c.text!.replace(/TASK COMPLETE/gi, '').trim())
+            .filter(Boolean);
+          resultText = textParts.join('\n\n') || null;
+        }
+
         // Task completed — try to auto-transition to next queue
         const task = getTask(db, taskId);
         if (task) {
@@ -279,13 +291,7 @@ async function checkSessionCompletion(
             moveTask(db, taskId, nextTransition.toQueueId, AGENT_ID, 'Auto-completed by agent');
             emit({ type: 'task:moved', taskId, timestamp: Date.now() });
           }
-          // Save agent response as a comment
-          if (resultText) {
-            addComment(db, taskId, AGENT_ID, 'agent', resultText);
-            emit({ type: 'task:comment', taskId, timestamp: Date.now() });
-          }
-
-          completeTask(db, taskId);
+          completeTask(db, taskId, resultText ?? undefined);
           emit({ type: 'task:completed', taskId, timestamp: Date.now() });
         }
 

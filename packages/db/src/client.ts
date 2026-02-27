@@ -73,6 +73,7 @@ function ensureTables(sqlite: Database.Database): void {
       queue_id TEXT NOT NULL REFERENCES queues(id),
       title TEXT NOT NULL,
       description TEXT,
+      result TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'executing', 'completed', 'failed')),
       session_key TEXT,

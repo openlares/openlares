@@ -55,7 +55,7 @@ function createTestDb(): OpenlareDb {
     );
     CREATE TABLE tasks (
       id TEXT PRIMARY KEY, dashboard_id TEXT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
-      queue_id TEXT NOT NULL REFERENCES queues(id), title TEXT NOT NULL, description TEXT,
+      queue_id TEXT NOT NULL REFERENCES queues(id), title TEXT NOT NULL, description TEXT, result TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
       session_key TEXT, assigned_agent TEXT,

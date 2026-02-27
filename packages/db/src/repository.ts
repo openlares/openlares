@@ -264,13 +264,18 @@ export function claimTask(
 /**
  * Mark a task as completed.
  */
-export function completeTask(db: OpenlareDb, taskId: string): typeof tasks.$inferSelect | null {
+export function completeTask(
+  db: OpenlareDb,
+  taskId: string,
+  result?: string,
+): typeof tasks.$inferSelect | null {
   const ts = now();
   db.update(tasks)
     .set({
       status: 'completed',
       completedAt: ts,
       updatedAt: ts,
+      ...(result !== undefined ? { result } : {}),
     })
     .where(eq(tasks.id, taskId))
     .run();

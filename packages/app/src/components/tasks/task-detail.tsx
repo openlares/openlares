@@ -215,72 +215,15 @@ export function TaskDetail({
             className="mb-4 w-24 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
           />
 
-          {/* Comments thread */}
-          <div className="mb-4">
-            <label className="mb-2 block text-xs font-medium text-slate-400">
-              💬 Comments {!commentsLoading && `(${comments.length})`}
-            </label>
-
-            {commentsLoading ? (
-              <p className="text-xs text-slate-500">Loading...</p>
-            ) : comments.length === 0 ? (
-              <p className="text-xs text-slate-500">No comments yet</p>
-            ) : (
-              <div className="space-y-2">
-                {comments.map((c) => (
-                  <div
-                    key={c.id}
-                    className={`rounded-lg p-3 text-sm ${
-                      c.authorType === 'agent'
-                        ? 'bg-cyan-500/10 ring-1 ring-cyan-500/20'
-                        : 'bg-slate-700/50 ring-1 ring-slate-600/50'
-                    }`}
-                  >
-                    <div className="mb-1 flex items-center justify-between">
-                      <span
-                        className={`text-xs font-medium ${
-                          c.authorType === 'agent' ? 'text-cyan-400' : 'text-slate-300'
-                        }`}
-                      >
-                        {c.authorType === 'agent' ? `🤖 ${c.author}` : `👤 ${c.author}`}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        {new Date(c.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-slate-200">{c.content}</p>
-                  </div>
-                ))}
-                <div ref={commentsEndRef} />
-              </div>
-            )}
-
-            {/* Add comment */}
-            <div className="mt-3">
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                rows={2}
-                placeholder="Add a comment..."
-                className="w-full resize-none rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                    void handleAddComment();
-                  }
-                }}
-              />
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-[10px] text-slate-600">Ctrl+Enter to submit</span>
-                <button
-                  onClick={() => void handleAddComment()}
-                  disabled={!newComment.trim() || postingComment}
-                  className="rounded bg-cyan-600 px-3 py-1 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
-                >
-                  {postingComment ? 'Posting...' : 'Add Comment'}
-                </button>
-              </div>
+          {/* Result */}
+          {task.result && (
+            <div className="mb-4 rounded-lg bg-emerald-500/10 p-3 ring-1 ring-emerald-500/20">
+              <label className="mb-1 block text-xs font-medium text-emerald-400">
+                Agent Result
+              </label>
+              <p className="whitespace-pre-wrap text-sm text-slate-200">{task.result}</p>
             </div>
-          </div>
+          )}
 
           {/* Metadata */}
           <div className="mb-4 space-y-1 text-xs text-slate-500">

@@ -42,6 +42,7 @@ export interface Task {
   assignedAgent: string | null;
   createdAt: number;
   updatedAt: number;
+  result: string | null;
   completedAt: number | null;
 }
 
