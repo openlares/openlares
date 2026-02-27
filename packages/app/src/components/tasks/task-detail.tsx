@@ -10,6 +10,7 @@ interface TaskDetailProps {
   onClose: () => void;
   onUpdate: (task: Task) => void;
   onDelete: (taskId: string) => void;
+  onRetry?: (task: Task) => void;
 }
 
 const statusLabels: Record<Task['status'], { text: string; color: string }> = {
@@ -25,6 +26,7 @@ export function TaskDetail({
   queues = [],
   onClose,
   onUpdate,
+  onRetry,
   onDelete,
 }: TaskDetailProps) {
   const [title, setTitle] = useState(task.title);
@@ -235,6 +237,15 @@ export function TaskDetail({
               </button>
             )}
           </div>
+
+          {onRetry && (task.status === 'failed' || task.status === 'completed') && (
+            <button
+              onClick={() => onRetry(task)}
+              className="rounded-lg bg-amber-600/20 px-3 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-600/30"
+            >
+              🔄 Retry
+            </button>
+          )}
 
           <div className="flex gap-2">
             <button
