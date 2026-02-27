@@ -7,6 +7,8 @@ import { TaskDetail } from './task-detail';
 import { DashboardConfig } from './dashboard-config';
 import type { Dashboard, Queue, Task, Transition } from './types';
 import { loadGatewayConfig } from '@/lib/storage';
+import { useToastStore } from '@/lib/toast-store';
+import { ToastContainer } from '@/components/toast';
 
 interface KanbanBoardProps {
   dashboard: Dashboard;
@@ -35,6 +37,8 @@ export function KanbanBoard({
   const [executorRunning, setExecutorRunning] = useState(false);
   const [executorTaskId, setExecutorTaskId] = useState<string | null>(null);
   const [showConfig, setShowConfig] = useState(false);
+
+  const addToast = useToastStore((s) => s.addToast);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -193,11 +197,14 @@ export function KanbanBoard({
         const data = (await res.json()) as { running: boolean; currentTaskId: string | null };
         setExecutorRunning(data.running);
         setExecutorTaskId(data.currentTaskId);
+      } else {
+        const err = (await res.json()) as { error?: string };
+        addToast('error', err.error ?? 'Failed to toggle agent');
       }
     } catch {
-      /* ignore */
+      addToast('error', 'Network error — check your connection');
     }
-  }, [executorRunning, dashboard.id]);
+  }, [executorRunning, dashboard.id, addToast]);
 
   // Group tasks by queue
   const tasksByQueue = queues.reduce(
@@ -252,15 +259,18 @@ export function KanbanBoard({
           setTasks((prev) =>
             prev.map((t) => (t.id === task.id ? { ...t, queueId: task.queueId } : t)),
           );
+          const err = (await res.json()) as { error?: string };
+          addToast('error', err.error ?? 'Failed to move task');
         }
       } catch {
         // Revert
         setTasks((prev) =>
           prev.map((t) => (t.id === task.id ? { ...t, queueId: task.queueId } : t)),
         );
+        addToast('error', 'Network error — check your connection');
       }
     },
-    [canMove],
+    [canMove, addToast],
   );
 
   // Create a new task
@@ -285,12 +295,15 @@ export function KanbanBoard({
           setNewTitle('');
           setNewDescription('');
           setShowAddModal(null);
+        } else {
+          const err = (await res.json()) as { error?: string };
+          addToast('error', err.error ?? 'Failed to create task');
         }
       } catch {
-        // TODO: show error
+        addToast('error', 'Network error — check your connection');
       }
     },
-    [dashboard.id, showAddModal, newTitle, newDescription],
+    [dashboard.id, showAddModal, newTitle, newDescription, addToast],
   );
 
   // Handle queue/transition config changes
@@ -446,6 +459,9 @@ export function KanbanBoard({
           onDelete={handleDeleteTask}
         />
       )}
+
+      {/* Toast notifications */}
+      <ToastContainer />
     </div>
   );
 }

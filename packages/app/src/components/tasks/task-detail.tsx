@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Task, Queue, TaskHistory, TaskComment } from './types';
+import { useToastStore } from '@/lib/toast-store';
 
 interface TaskDetailProps {
   task: Task;
@@ -33,6 +34,8 @@ export function TaskDetail({
   const [newComment, setNewComment] = useState('');
   const [postingComment, setPostingComment] = useState(false);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  const addToast = useToastStore((s) => s.addToast);
 
   const isDirty =
     title !== task.title || description !== (task.description ?? '') || priority !== task.priority;
@@ -111,22 +114,31 @@ export function TaskDetail({
       if (res.ok) {
         const updated = (await res.json()) as Task;
         onUpdate(updated);
+      } else {
+        const err = (await res.json()) as { error?: string };
+        addToast('error', err.error ?? 'Failed to save task');
       }
+    } catch {
+      addToast('error', 'Network error — check your connection');
     } finally {
       setSaving(false);
     }
-  }, [task.id, title, description, priority, isDirty, saving, onUpdate]);
+  }, [task.id, title, description, priority, isDirty, saving, onUpdate, addToast]);
 
   const handleDelete = useCallback(async () => {
     try {
       const res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
       if (res.ok) {
+        addToast('success', 'Task deleted');
         onDelete(task.id);
+      } else {
+        const err = (await res.json()) as { error?: string };
+        addToast('error', err.error ?? 'Failed to delete task');
       }
     } catch {
-      // TODO: error toast
+      addToast('error', 'Network error — check your connection');
     }
-  }, [task.id, onDelete]);
+  }, [task.id, onDelete, addToast]);
 
   const handleClearError = useCallback(async () => {
     try {
@@ -138,11 +150,14 @@ export function TaskDetail({
       if (res.ok) {
         const updated = (await res.json()) as Task;
         onUpdate(updated);
+      } else {
+        const err = (await res.json()) as { error?: string };
+        addToast('error', err.error ?? 'Failed to clear error');
       }
     } catch {
-      // TODO: error toast
+      addToast('error', 'Network error — check your connection');
     }
-  }, [task.id, onUpdate]);
+  }, [task.id, onUpdate, addToast]);
 
   const handleAddComment = useCallback(async () => {
     const content = newComment.trim();
@@ -158,13 +173,16 @@ export function TaskDetail({
         const comment = (await res.json()) as TaskComment;
         setComments((prev) => [...prev, comment]);
         setNewComment('');
+      } else {
+        const err = (await res.json()) as { error?: string };
+        addToast('error', err.error ?? 'Failed to post comment');
       }
     } catch {
-      // TODO: error toast
+      addToast('error', 'Network error — check your connection');
     } finally {
       setPostingComment(false);
     }
-  }, [task.id, newComment, postingComment]);
+  }, [task.id, newComment, postingComment, addToast]);
 
   const resolveQueueName = useCallback(
     (queueId: string | null): string => {
