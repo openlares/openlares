@@ -89,6 +89,7 @@ async function ensureGatewayConnected(): Promise<GatewayClient> {
   const client = new GatewayClient({
     url: gatewayConfig.url,
     token: gatewayConfig.token,
+    origin: 'openlares-executor',
   });
 
   await client.connect();
