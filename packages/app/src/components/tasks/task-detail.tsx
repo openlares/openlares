@@ -10,15 +10,7 @@ interface TaskDetailProps {
   onClose: () => void;
   onUpdate: (task: Task) => void;
   onDelete: (taskId: string) => void;
-  onRetry?: (task: Task) => void;
 }
-
-const statusLabels: Record<Task['status'], { text: string; color: string }> = {
-  pending: { text: 'Pending', color: 'bg-slate-500/20 text-slate-300' },
-  executing: { text: 'Executing', color: 'bg-cyan-500/20 text-cyan-300' },
-  completed: { text: 'Completed', color: 'bg-emerald-500/20 text-emerald-300' },
-  failed: { text: 'Failed', color: 'bg-red-500/20 text-red-300' },
-};
 
 export function TaskDetail({
   task,
@@ -26,7 +18,6 @@ export function TaskDetail({
   queues = [],
   onClose,
   onUpdate,
-  onRetry,
   onDelete,
 }: TaskDetailProps) {
   const [title, setTitle] = useState(task.title);
@@ -137,6 +128,22 @@ export function TaskDetail({
     }
   }, [task.id, onDelete]);
 
+  const handleClearError = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear-error' }),
+      });
+      if (res.ok) {
+        const updated = (await res.json()) as Task;
+        onUpdate(updated);
+      }
+    } catch {
+      // TODO: error toast
+    }
+  }, [task.id, onUpdate]);
+
   const handleAddComment = useCallback(async () => {
     const content = newComment.trim();
     if (!content || postingComment) return;
@@ -167,8 +174,6 @@ export function TaskDetail({
     [queues],
   );
 
-  const status = statusLabels[task.status];
-
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[10vh]">
       <div
@@ -178,9 +183,6 @@ export function TaskDetail({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-700/50 px-5 py-3">
           <div className="flex items-center gap-2">
-            <span className={`rounded px-2 py-0.5 text-xs font-medium ${status.color}`}>
-              {status.text}
-            </span>
             {queue && <span className="text-xs text-slate-500">in {queue.name}</span>}
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
@@ -190,6 +192,27 @@ export function TaskDetail({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5">
+          {/* Error section */}
+          {task.error && (
+            <div className="mb-4 rounded-lg bg-red-500/10 p-3 ring-1 ring-red-500/20">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-red-400">⚠️ Error</label>
+                <button
+                  onClick={handleClearError}
+                  className="rounded bg-red-600/20 px-2 py-0.5 text-xs text-red-300 hover:bg-red-600/30"
+                >
+                  Clear Error
+                </button>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">{task.error}</p>
+              {task.errorAt && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {new Date(task.errorAt).toLocaleString()}
+                </p>
+              )}
+            </div>
+          )}
+
           <label className="mb-1 block text-xs text-slate-400">Title</label>
           <input
             value={title}
@@ -215,22 +238,11 @@ export function TaskDetail({
             className="mb-4 w-24 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
           />
 
-          {/* Result */}
-          {task.result && (
-            <div className="mb-4 rounded-lg bg-emerald-500/10 p-3 ring-1 ring-emerald-500/20">
-              <label className="mb-1 block text-xs font-medium text-emerald-400">
-                Agent Result
-              </label>
-              <p className="whitespace-pre-wrap text-sm text-slate-200">{task.result}</p>
-            </div>
-          )}
-
           {/* Metadata */}
           <div className="mb-4 space-y-1 text-xs text-slate-500">
             {task.assignedAgent && <p>Agent: {task.assignedAgent}</p>}
             {task.sessionKey && <p>Session: {task.sessionKey}</p>}
             <p>Created: {new Date(task.createdAt).toLocaleString()}</p>
-            {task.completedAt && <p>Completed: {new Date(task.completedAt).toLocaleString()}</p>}
           </div>
 
           {/* History section */}
@@ -309,15 +321,6 @@ export function TaskDetail({
               </button>
             )}
           </div>
-
-          {onRetry && (task.status === 'failed' || task.status === 'completed') && (
-            <button
-              onClick={() => onRetry(task)}
-              className="rounded-lg bg-amber-600/20 px-3 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-600/30"
-            >
-              🔄 Retry
-            </button>
-          )}
 
           <div className="flex gap-2">
             <button

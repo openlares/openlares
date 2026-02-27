@@ -5,9 +5,7 @@ import {
   getTask,
   moveTask,
   claimTask,
-  completeTask,
-  failTask,
-  resetTask,
+  clearTaskError,
   updateTask,
   deleteTask,
   getTaskHistory,
@@ -22,19 +20,18 @@ function serializeTask(raw: {
   title: string;
   description: string | null;
   priority: number;
-  status: 'pending' | 'executing' | 'completed' | 'failed';
   sessionKey: string | null;
   assignedAgent: string | null;
-  result: string | null;
+  error: string | null;
+  errorAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  completedAt: Date | null;
 }): Task {
   return {
     ...raw,
+    errorAt: raw.errorAt?.getTime() ?? null,
     createdAt: raw.createdAt.getTime(),
     updatedAt: raw.updatedAt.getTime(),
-    completedAt: raw.completedAt?.getTime() ?? null,
   };
 }
 
@@ -56,8 +53,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  * Actions:
  *   { action: "move", toQueueId, actor, note? }
  *   { action: "claim", agentId, sessionKey }
- *   { action: "complete" }
- *   { action: "fail" }
+ *   { action: "clear-error" }
  *   { action: "update", title?, description?, priority? }
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -95,30 +91,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json(serializeTask(result));
     }
 
-    case 'complete': {
-      const result = completeTask(db, id);
+    case 'clear-error': {
+      const result = clearTaskError(db, id);
       if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
-      emit({ type: 'task:completed', taskId: id, timestamp: Date.now() });
-      return NextResponse.json(serializeTask(result));
-    }
-
-    case 'fail': {
-      const result = failTask(db, id);
-      if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
-      emit({ type: 'task:failed', taskId: id, timestamp: Date.now() });
-      return NextResponse.json(serializeTask(result));
-    }
-
-    case 'reset': {
-      const reset = resetTask(db, id);
-      if (!reset) {
-        return NextResponse.json(
-          { error: 'Task not found or not in failed/completed state' },
-          { status: 400 },
-        );
-      }
       emit({ type: 'task:updated', taskId: id, timestamp: Date.now() });
-      return NextResponse.json(serializeTask(reset));
+      return NextResponse.json(serializeTask(result));
     }
 
     case 'update': {

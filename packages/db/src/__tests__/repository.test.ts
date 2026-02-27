@@ -15,8 +15,9 @@ import {
   listTasks,
   moveTask,
   claimTask,
-  completeTask,
-  failTask,
+  setTaskError,
+  clearTaskError,
+  releaseTask,
   updateTask,
   deleteTask,
   deleteQueue,
@@ -55,11 +56,11 @@ function createTestDb(): OpenlareDb {
     );
     CREATE TABLE tasks (
       id TEXT PRIMARY KEY, dashboard_id TEXT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
-      queue_id TEXT NOT NULL REFERENCES queues(id), title TEXT NOT NULL, description TEXT, result TEXT,
+      queue_id TEXT NOT NULL REFERENCES queues(id), title TEXT NOT NULL, description TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'pending',
       session_key TEXT, assigned_agent TEXT,
-      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, completed_at INTEGER
+      error TEXT, error_at INTEGER,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
     CREATE TABLE attachments (
       id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -176,7 +177,8 @@ describe('Tasks', () => {
     const task = createTask(db, { dashboardId, queueId: todoId, title: 'Fix bug' });
     expect(task.title).toBe('Fix bug');
     expect(task.queueId).toBe(todoId);
-    expect(task.status).toBe('pending');
+    expect(task.assignedAgent).toBeNull();
+    expect(task.error).toBeNull();
   });
 
   it('lists tasks ordered by priority then creation time', () => {
@@ -192,7 +194,8 @@ describe('Tasks', () => {
     const task = createTask(db, { dashboardId, queueId: todoId, title: 'Move me' });
     const moved = moveTask(db, task.id, inProgressId, 'human');
     expect(moved?.queueId).toBe(inProgressId);
-    expect(moved?.status).toBe('pending');
+    expect(moved?.assignedAgent).toBeNull();
+    expect(moved?.error).toBeNull();
   });
 
   it('rejects invalid transitions', () => {
@@ -214,32 +217,79 @@ describe('Tasks', () => {
     expect(history[0]!.note).toBe('Starting work');
   });
 
-  it('claims and completes a task', () => {
+  it('claims and releases a task', () => {
     const task = createTask(db, { dashboardId, queueId: inProgressId, title: 'Work on me' });
 
     const claimed = claimTask(db, task.id, 'main', 'session-123');
-    expect(claimed?.status).toBe('executing');
     expect(claimed?.sessionKey).toBe('session-123');
     expect(claimed?.assignedAgent).toBe('main');
 
-    const completed = completeTask(db, task.id);
-    expect(completed?.status).toBe('completed');
-    expect(completed?.completedAt).toBeTruthy();
+    const released = releaseTask(db, task.id);
+    expect(released?.assignedAgent).toBeNull();
+    expect(released?.sessionKey).toBeNull();
   });
 
-  it('fails a task', () => {
+  it('sets error on a task', () => {
     const task = createTask(db, { dashboardId, queueId: inProgressId, title: 'Fail me' });
     claimTask(db, task.id, 'main', 'session-456');
 
-    const failed = failTask(db, task.id);
-    expect(failed?.status).toBe('failed');
+    const errored = setTaskError(db, task.id, 'Something went wrong');
+    expect(errored?.error).toBe('Something went wrong');
+    expect(errored?.errorAt).toBeTruthy();
+    expect(errored?.assignedAgent).toBeNull();
   });
 
-  it('cannot claim a non-pending task', () => {
+  it('cannot claim an assigned task', () => {
     const task = createTask(db, { dashboardId, queueId: inProgressId, title: 'Busy' });
     claimTask(db, task.id, 'main', 'session-1');
     const again = claimTask(db, task.id, 'main', 'session-2');
     expect(again).toBeNull();
+  });
+
+  it('setTaskError marks task and clears assignment', () => {
+    const task = createTask(db, { dashboardId, queueId: inProgressId, title: 'Error test' });
+    claimTask(db, task.id, 'main', 'session-abc');
+
+    const errored = setTaskError(db, task.id, 'Network failure');
+    expect(errored?.error).toBe('Network failure');
+    expect(errored?.errorAt).toBeInstanceOf(Date);
+    expect(errored?.assignedAgent).toBeNull();
+    expect(errored?.sessionKey).toBeNull();
+  });
+
+  it('clearTaskError allows task to be claimed again', () => {
+    const task = createTask(db, { dashboardId, queueId: inProgressId, title: 'Clear error' });
+    setTaskError(db, task.id, 'Some error');
+
+    // Cannot claim when error is set
+    const failedClaim = claimTask(db, task.id, 'main', 'session-xyz');
+    expect(failedClaim).toBeNull();
+
+    const cleared = clearTaskError(db, task.id);
+    expect(cleared?.error).toBeNull();
+    expect(cleared?.errorAt).toBeNull();
+
+    // Now can claim
+    const claimed = claimTask(db, task.id, 'main', 'session-xyz');
+    expect(claimed?.assignedAgent).toBe('main');
+  });
+
+  it('moveTask clears error and assignment', () => {
+    const task = createTask(db, { dashboardId, queueId: todoId, title: 'Move with error' });
+    // Manually set an error by going through inProgress first
+    const moved = moveTask(db, task.id, inProgressId, 'human');
+    expect(moved).not.toBeNull();
+    setTaskError(db, task.id, 'Old error');
+
+    // Now move back (requires transition inProgress -> todo, but we only have inProgress -> done)
+    // Use a task that starts in inProgress
+    const task2 = createTask(db, { dashboardId, queueId: inProgressId, title: 'Move back' });
+    setTaskError(db, task2.id, 'Old error');
+    const moved2 = moveTask(db, task2.id, doneId, 'agent');
+    expect(moved2?.error).toBeNull();
+    expect(moved2?.errorAt).toBeNull();
+    expect(moved2?.assignedAgent).toBeNull();
+    expect(moved2?.queueId).toBe(doneId);
   });
 
   it('updates a task title and description', () => {
@@ -328,9 +378,30 @@ describe('getNextClaimableTask', () => {
 
     claimTask(db, task1.id, 'main', 'session-1');
 
-    // Agent limit is 1, one task executing → no more claimable
+    // Agent limit is 1, one task assigned → no more claimable
     const next = getNextClaimableTask(db, dashboardId);
     expect(next).toBeUndefined();
+  });
+
+  it('getNextClaimableTask skips tasks with errors', () => {
+    const task1 = createTask(db, {
+      dashboardId,
+      queueId: inProgressId,
+      title: 'Errored',
+      priority: 10,
+    });
+    const task2 = createTask(db, {
+      dashboardId,
+      queueId: inProgressId,
+      title: 'Healthy',
+      priority: 5,
+    });
+
+    setTaskError(db, task1.id, 'Some error');
+
+    const next = getNextClaimableTask(db, dashboardId);
+    expect(next?.id).toBe(task2.id);
+    expect(next?.title).toBe('Healthy');
   });
 });
 

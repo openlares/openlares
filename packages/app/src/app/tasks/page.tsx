@@ -41,9 +41,9 @@ export default function TasksPage() {
 
   const taskList: Task[] = rawTasks.map((t) => ({
     ...t,
+    errorAt: t.errorAt?.getTime() ?? null,
     createdAt: t.createdAt.getTime(),
     updatedAt: t.updatedAt.getTime(),
-    completedAt: t.completedAt?.getTime() ?? null,
   }));
 
   const transitionList: Transition[] = rawTransitions.map((t) => ({

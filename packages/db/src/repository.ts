@@ -4,7 +4,7 @@
  * All mutations return the affected row(s). IDs are generated via randomUUID().
  */
 
-import { eq, and, asc, desc } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, isNotNull } from 'drizzle-orm';
 import type { OpenlareDb } from './client';
 import { dashboards, queues, transitions, tasks, taskHistory, taskComments } from './schema';
 import type { DashboardConfig, TransitionConditions } from './schema';
@@ -158,7 +158,6 @@ export function createTask(db: OpenlareDb, input: CreateTaskInput) {
       title: input.title,
       description: input.description ?? null,
       priority: input.priority ?? 0,
-      status: 'pending',
       createdAt: ts,
       updatedAt: ts,
     })
@@ -191,6 +190,7 @@ export function listDashboardTasks(db: OpenlareDb, dashboardId: string) {
 /**
  * Move a task to a different queue. Validates the transition exists and
  * records history. Returns the updated task or null if the move is invalid.
+ * Clears assignedAgent, sessionKey, error, and errorAt for a clean slate.
  */
 export function moveTask(
   db: OpenlareDb,
@@ -226,9 +226,16 @@ export function moveTask(
     })
     .run();
 
-  // Move the task
+  // Move the task, clean slate for the new queue
   db.update(tasks)
-    .set({ queueId: toQueueId, status: 'pending', updatedAt: ts })
+    .set({
+      queueId: toQueueId,
+      assignedAgent: null,
+      sessionKey: null,
+      error: null,
+      errorAt: null,
+      updatedAt: ts,
+    })
     .where(eq(tasks.id, taskId))
     .run();
 
@@ -236,8 +243,8 @@ export function moveTask(
 }
 
 /**
- * Claim a task for agent execution. Sets status to 'executing' and records
- * the session key. Returns the task or null if it's not claimable.
+ * Claim a task for agent execution. Sets assignedAgent and sessionKey.
+ * Returns the task or null if it's not claimable (already assigned or has error).
  */
 export function claimTask(
   db: OpenlareDb,
@@ -246,11 +253,10 @@ export function claimTask(
   sessionKey: string,
 ): typeof tasks.$inferSelect | null {
   const task = getTask(db, taskId);
-  if (!task || task.status !== 'pending') return null;
+  if (!task || task.assignedAgent || task.error) return null;
 
   db.update(tasks)
     .set({
-      status: 'executing',
       assignedAgent: agentId,
       sessionKey,
       updatedAt: now(),
@@ -262,33 +268,39 @@ export function claimTask(
 }
 
 /**
- * Mark a task as completed.
+ * Set error on a task. Agent will skip it until cleared.
  */
-export function completeTask(
+export function setTaskError(
   db: OpenlareDb,
   taskId: string,
-  result?: string,
+  error: string,
 ): typeof tasks.$inferSelect | null {
-  const ts = now();
   db.update(tasks)
-    .set({
-      status: 'completed',
-      completedAt: ts,
-      updatedAt: ts,
-      ...(result !== undefined ? { result } : {}),
-    })
+    .set({ error, errorAt: now(), assignedAgent: null, sessionKey: null, updatedAt: now() })
     .where(eq(tasks.id, taskId))
     .run();
-
   return getTask(db, taskId) ?? null;
 }
 
 /**
- * Mark a task as failed.
+ * Clear error on a task so it can be picked up again.
  */
-export function failTask(db: OpenlareDb, taskId: string): typeof tasks.$inferSelect | null {
-  db.update(tasks).set({ status: 'failed', updatedAt: now() }).where(eq(tasks.id, taskId)).run();
+export function clearTaskError(db: OpenlareDb, taskId: string): typeof tasks.$inferSelect | null {
+  db.update(tasks)
+    .set({ error: null, errorAt: null, updatedAt: now() })
+    .where(eq(tasks.id, taskId))
+    .run();
+  return getTask(db, taskId) ?? null;
+}
 
+/**
+ * Release a task's agent assignment without setting error (for after successful routing).
+ */
+export function releaseTask(db: OpenlareDb, taskId: string): typeof tasks.$inferSelect | null {
+  db.update(tasks)
+    .set({ assignedAgent: null, sessionKey: null, updatedAt: now() })
+    .where(eq(tasks.id, taskId))
+    .run();
   return getTask(db, taskId) ?? null;
 }
 
@@ -301,26 +313,6 @@ export interface UpdateTaskInput {
   priority?: number;
 }
 
-/** Reset a failed/completed task back to pending so it can be retried. */
-export function resetTask(db: OpenlareDb, taskId: string): typeof tasks.$inferSelect | null {
-  const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
-  if (!task) return null;
-  if (task.status !== 'failed' && task.status !== 'completed') return null;
-
-  const now = new Date();
-  db.update(tasks)
-    .set({
-      status: 'pending',
-      sessionKey: null,
-      assignedAgent: null,
-      completedAt: null,
-      updatedAt: now,
-    })
-    .where(eq(tasks.id, taskId))
-    .run();
-
-  return db.select().from(tasks).where(eq(tasks.id, taskId)).get() ?? null;
-}
 export function updateTask(
   db: OpenlareDb,
   taskId: string,
@@ -353,7 +345,7 @@ export function deleteTask(db: OpenlareDb, taskId: string): boolean {
 
 /**
  * Get the next claimable task from assistant-owned queues in a dashboard.
- * Returns the highest-priority pending task, respecting agent limits.
+ * Returns the highest-priority unassigned, error-free task, respecting agent limits.
  */
 export function getNextClaimableTask(
   db: OpenlareDb,
@@ -367,20 +359,20 @@ export function getNextClaimableTask(
     .all();
 
   for (const queue of assistantQueues) {
-    // Check agent limit
+    // Check agent limit (count tasks with assignedAgent set)
     const executing = db
       .select()
       .from(tasks)
-      .where(and(eq(tasks.queueId, queue.id), eq(tasks.status, 'executing')))
+      .where(and(eq(tasks.queueId, queue.id), isNotNull(tasks.assignedAgent)))
       .all();
 
     if (queue.agentLimit > 0 && executing.length >= queue.agentLimit) continue;
 
-    // Get highest priority pending task
+    // Get highest priority task with no assignedAgent and no error
     const task = db
       .select()
       .from(tasks)
-      .where(and(eq(tasks.queueId, queue.id), eq(tasks.status, 'pending')))
+      .where(and(eq(tasks.queueId, queue.id), isNull(tasks.assignedAgent), isNull(tasks.error)))
       .orderBy(desc(tasks.priority), asc(tasks.createdAt))
       .limit(1)
       .get();

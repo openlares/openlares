@@ -166,24 +166,6 @@ export function KanbanBoard({
     };
   }, [dashboard.id, refreshTasks, refreshExecutorStatus]);
 
-  const handleRetryTask = useCallback(
-    async (task: Task) => {
-      try {
-        const res = await fetch(`/api/tasks/${task.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reset' }),
-        });
-        if (res.ok) {
-          refreshTasks();
-        }
-      } catch {
-        /* ignore */
-      }
-    },
-    [refreshTasks],
-  );
-
   const toggleExecutor = useCallback(async () => {
     try {
       const res = await fetch('/api/executor', {
@@ -460,7 +442,6 @@ export function KanbanBoard({
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdateTask}
           onDelete={handleDeleteTask}
-          onRetry={handleRetryTask}
         />
       )}
     </div>
