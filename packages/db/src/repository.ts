@@ -6,7 +6,7 @@
 
 import { eq, and, asc, desc } from 'drizzle-orm';
 import type { OpenlareDb } from './client';
-import { dashboards, queues, transitions, tasks, taskHistory } from './schema';
+import { dashboards, queues, transitions, tasks, taskHistory, taskComments } from './schema';
 import type { DashboardConfig, TransitionConditions } from './schema';
 
 // ---------------------------------------------------------------------------
@@ -267,7 +267,11 @@ export function claimTask(
 export function completeTask(db: OpenlareDb, taskId: string): typeof tasks.$inferSelect | null {
   const ts = now();
   db.update(tasks)
-    .set({ status: 'completed', completedAt: ts, updatedAt: ts })
+    .set({
+      status: 'completed',
+      completedAt: ts,
+      updatedAt: ts,
+    })
     .where(eq(tasks.id, taskId))
     .run();
 
@@ -380,6 +384,44 @@ export function getNextClaimableTask(
   }
 
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Task Comments
+// ---------------------------------------------------------------------------
+
+export function addComment(
+  db: OpenlareDb,
+  taskId: string,
+  author: string,
+  authorType: 'human' | 'agent',
+  content: string,
+): typeof taskComments.$inferSelect {
+  const id = newId();
+  return db
+    .insert(taskComments)
+    .values({
+      id,
+      taskId,
+      author,
+      authorType,
+      content,
+      createdAt: now(),
+    })
+    .returning()
+    .get();
+}
+
+export function listComments(
+  db: OpenlareDb,
+  taskId: string,
+): Array<typeof taskComments.$inferSelect> {
+  return db
+    .select()
+    .from(taskComments)
+    .where(eq(taskComments.taskId, taskId))
+    .orderBy(asc(taskComments.createdAt))
+    .all();
 }
 
 // ---------------------------------------------------------------------------

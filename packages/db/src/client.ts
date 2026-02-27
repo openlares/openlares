@@ -82,6 +82,15 @@ function ensureTables(sqlite: Database.Database): void {
       completed_at INTEGER
     );
 
+    CREATE TABLE IF NOT EXISTS task_comments (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      author TEXT NOT NULL,
+      author_type TEXT NOT NULL CHECK(author_type IN ('human', 'agent')),
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -106,6 +115,7 @@ function ensureTables(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_dashboard ON tasks(dashboard_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_task_history_task ON task_history(task_id);
+    CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id);
     CREATE INDEX IF NOT EXISTS idx_attachments_task ON attachments(task_id);
     CREATE INDEX IF NOT EXISTS idx_queues_dashboard ON queues(dashboard_id);
   `);

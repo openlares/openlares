@@ -102,6 +102,22 @@ export const tasks = sqliteTable('tasks', {
 });
 
 // ---------------------------------------------------------------------------
+// Task Comments (conversation thread per task)
+// ---------------------------------------------------------------------------
+
+export const taskComments = sqliteTable('task_comments', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id')
+    .notNull()
+    .references(() => tasks.id, { onDelete: 'cascade' }),
+  /** 'human' or agent ID like 'main'. */
+  author: text('author').notNull(),
+  authorType: text('author_type', { enum: ['human', 'agent'] }).notNull(),
+  content: text('content').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // Attachments (metadata — actual files stored on filesystem)
 // ---------------------------------------------------------------------------
 

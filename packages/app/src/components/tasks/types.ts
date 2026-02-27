@@ -45,6 +45,15 @@ export interface Task {
   completedAt: number | null;
 }
 
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  author: string;
+  authorType: 'human' | 'agent';
+  content: string;
+  createdAt: number;
+}
+
 export interface TaskHistory {
   id: string;
   taskId: string;
