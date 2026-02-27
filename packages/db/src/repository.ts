@@ -489,7 +489,19 @@ export function seedDefaultDashboard(db: OpenlareDb) {
     toQueueId: todo.id,
     actorType: 'human',
   });
+  // Allow human to move from done back to todo
+  createTransition(db, {
+    fromQueueId: done.id,
+    toQueueId: todo.id,
+    actorType: 'human',
+  });
 
+  // Allow human to move from done back to in-progress
+  createTransition(db, {
+    fromQueueId: done.id,
+    toQueueId: inProgress.id,
+    actorType: 'human',
+  });
   return dashboard;
 }
 

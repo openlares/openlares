@@ -417,7 +417,7 @@ describe('seedDefaultDashboard', () => {
     expect(qs.map((q) => q.ownerType)).toEqual(['human', 'assistant', 'human']);
 
     const ts = listTransitions(db, dashboard.id);
-    expect(ts).toHaveLength(3); // todo→ip, ip→done, ip→todo
+    expect(ts).toHaveLength(5); // todo→ip, ip→done, ip→todo, done→todo, done→ip
   });
 
   it('returns existing dashboard on second call', () => {
