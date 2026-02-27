@@ -2,8 +2,9 @@
  * Task executor — connects tasks to OpenClaw agent sessions.
  *
  * Polls for claimable tasks in assistant-owned queues,
- * dispatches them via chat.send, and monitors completion.
- * Agent signals completion via "MOVE TO: <queue name>" in its last message.
+ * dispatches them via HTTP /v1/chat/completions, and processes
+ * the response directly. Agent signals completion via
+ * "MOVE TO: <queue name>" in its response message.
  */
 
 import { getDb } from './db';
@@ -33,9 +34,7 @@ interface ExecutorState {
   currentSessionKey: string | null;
   dispatchTime: number | null;
   pollTimer: ReturnType<typeof setTimeout> | null;
-  monitorTimer: ReturnType<typeof setTimeout> | null;
-  /** Content hash of the last processed assistant message (dedup guard). */
-  lastProcessedContent: string | null;
+  abortController: AbortController | null;
 }
 
 interface GatewayConfig {
@@ -56,69 +55,23 @@ if (!g.__executorState) {
     currentSessionKey: null,
     dispatchTime: null,
     pollTimer: null,
-    monitorTimer: null,
-    lastProcessedContent: null,
+    abortController: null,
   };
 }
 const state = g.__executorState;
 
 const POLL_INTERVAL_MS = 5_000;
-const MONITOR_INTERVAL_MS = 3_000;
 const EXECUTION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const AGENT_ID = 'main';
 
 // ---------------------------------------------------------------------------
-// Gateway communication (server-side, WebSocket)
+// Gateway configuration
 // ---------------------------------------------------------------------------
 
-import { GatewayClient } from '@openlares/api-client';
-import { getServerDeviceIdentity } from '@openlares/api-client/server-identity';
-
 let gatewayConfig: GatewayConfig | null = null;
-let gatewayClient: GatewayClient | null = null;
 
 export function configureGateway(config: GatewayConfig): void {
-  // Disconnect old client if config changed
-  if (
-    gatewayClient &&
-    gatewayConfig &&
-    (gatewayConfig.url !== config.url || gatewayConfig.token !== config.token)
-  ) {
-    gatewayClient.disconnect();
-    gatewayClient = null;
-  }
   gatewayConfig = config;
-}
-
-async function ensureGatewayConnected(): Promise<GatewayClient> {
-  if (!gatewayConfig) throw new Error('Gateway not configured');
-
-  if (gatewayClient) {
-    // Already connected
-    return gatewayClient;
-  }
-
-  // Allow self-signed certs for LAN setups
-  if (gatewayConfig.url.startsWith('wss://')) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-  }
-
-  const serverIdentity = await getServerDeviceIdentity();
-  const client = new GatewayClient({
-    url: gatewayConfig.url,
-    token: gatewayConfig.token,
-    origin: 'https://localhost:3000',
-    serverDeviceIdentity: serverIdentity,
-  });
-
-  await client.connect();
-  gatewayClient = client;
-  return client;
-}
-
-async function gatewayRpc(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  const client = await ensureGatewayConnected();
-  return client.request(method, params);
 }
 
 // ---------------------------------------------------------------------------
@@ -140,10 +93,6 @@ export function startExecutor(dashboardId: string): void {
     clearTimeout(state.pollTimer);
     state.pollTimer = null;
   }
-  if (state.monitorTimer) {
-    clearTimeout(state.monitorTimer);
-    state.monitorTimer = null;
-  }
   state.running = true;
   emit({ type: 'executor:started', timestamp: Date.now() });
   pollForWork(dashboardId);
@@ -152,17 +101,12 @@ export function startExecutor(dashboardId: string): void {
 export function stopExecutor(): void {
   state.running = false;
   state.dispatchTime = null;
-  if (gatewayClient) {
-    gatewayClient.disconnect();
-    gatewayClient = null;
-  }
+  // Abort any in-flight fetch request
+  state.abortController?.abort();
+  state.abortController = null;
   if (state.pollTimer) {
     clearTimeout(state.pollTimer);
     state.pollTimer = null;
-  }
-  if (state.monitorTimer) {
-    clearTimeout(state.monitorTimer);
-    state.monitorTimer = null;
   }
   emit({ type: 'executor:stopped', timestamp: Date.now() });
 }
@@ -201,7 +145,7 @@ function pollForWork(dashboardId: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Task dispatch — send to OpenClaw via chat.send
+// Task dispatch — send to OpenClaw via HTTP /v1/chat/completions
 // ---------------------------------------------------------------------------
 
 interface BuildPromptInput {
@@ -254,7 +198,11 @@ async function dispatchTask(
   sessionKey: string,
   dashboardId: string,
 ): Promise<void> {
+  const taskId = task.id;
+
   try {
+    if (!gatewayConfig) throw new Error('Gateway not configured');
+
     const allQueues = listQueues(db, dashboardId);
     const currentQueue = allQueues.find((q) => q.id === task.queueId);
     const dashboardTransitions = listTransitions(db, dashboardId);
@@ -267,7 +215,7 @@ async function dispatchTask(
       .filter(Boolean)
       .map((q) => ({ name: q!.name, description: q!.description }));
 
-    const comments = listComments(db, task.id);
+    const comments = listComments(db, taskId);
 
     const prompt = buildPrompt({
       title: task.title,
@@ -277,36 +225,175 @@ async function dispatchTask(
       destinations,
     });
 
-    await gatewayRpc('chat.send', {
-      idempotencyKey: crypto.randomUUID(),
-      sessionKey,
-      message: prompt,
-    });
-
     state.dispatchTime = Date.now();
 
-    // Snapshot the current last assistant message content BEFORE monitoring.
-    // On re-dispatch to the same session, the old assistant MOVE TO message
-    // may still be the last message (chat.send is async). By recording it here,
-    // the dedup guard will skip it and only process genuinely new responses.
+    // Convert WebSocket URL to HTTP URL
+    const httpUrl = gatewayConfig.url
+      .replace(/^wss:\/\//, 'https://')
+      .replace(/^ws:\/\//, 'http://');
+
+    // Allow self-signed certs for LAN setups
+    const prevTLS = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+    const controller = new AbortController();
+    state.abortController = controller;
+
+    let content: string;
     try {
-      const snapshot = (await gatewayRpc('chat.history', {
-        sessionKey,
-        limit: 3,
-      })) as { messages?: Array<{ role: string; content: unknown }> } | null;
-      const msgs = snapshot?.messages ?? [];
-      const lastAsst = [...msgs].reverse().find((m) => m.role === 'assistant');
-      state.lastProcessedContent = lastAsst ? extractContent(lastAsst.content) : null;
-    } catch {
-      state.lastProcessedContent = null;
+      // Combine manual abort signal with execution timeout
+      const timeoutSignal = AbortSignal.timeout(EXECUTION_TIMEOUT_MS);
+      const signal = AbortSignal.any
+        ? AbortSignal.any([controller.signal, timeoutSignal])
+        : controller.signal;
+
+      const response = await fetch(`${httpUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${gatewayConfig.token}`,
+        },
+        body: JSON.stringify({
+          model: 'openclaw:main',
+          messages: [{ role: 'user', content: prompt }],
+          sessionKey,
+          stream: false,
+        }),
+        signal,
+      });
+
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      content = data.choices?.[0]?.message?.content ?? '';
+    } finally {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTLS;
+      state.abortController = null;
     }
 
-    // Start monitoring this session
-    monitorSession(db, task.id, sessionKey, dashboardId);
+    // Parse the MOVE TO directive from the response
+    const targetName = parseMoveDirective(extractContent(content));
+    const resultText = extractResponseText(content);
+
+    // Save agent response as comment
+    if (resultText) {
+      addComment(db, taskId, AGENT_ID, 'agent', resultText);
+      emit({ type: 'task:comment', taskId, timestamp: Date.now() });
+    }
+
+    if (!targetName) {
+      setTaskError(db, taskId, 'Agent did not provide routing directive');
+      emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+      state.currentTaskId = null;
+      state.currentSessionKey = null;
+      state.dispatchTime = null;
+      return;
+    }
+
+    const currentTask = getTask(db, taskId);
+    if (!currentTask) {
+      state.currentTaskId = null;
+      state.currentSessionKey = null;
+      state.dispatchTime = null;
+      return;
+    }
+
+    // Handle STUCK
+    if (targetName.toUpperCase() === 'STUCK') {
+      setTaskError(db, taskId, "Agent couldn't determine destination queue");
+      emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+      state.currentTaskId = null;
+      state.currentSessionKey = null;
+      state.dispatchTime = null;
+      return;
+    }
+
+    // Find target queue by name (case-insensitive)
+    const targetQueue = allQueues.find((q) => q.name.toLowerCase() === targetName.toLowerCase());
+
+    const dashConfig = getDashboard(db, currentTask.dashboardId);
+    const strict = dashConfig?.config?.strictTransitions ?? false;
+
+    // Fallback: DONE with no matching queue (used when no destinations configured)
+    if (!targetQueue && targetName.toUpperCase() === 'DONE') {
+      releaseTask(db, taskId);
+      emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+      state.currentTaskId = null;
+      state.currentSessionKey = null;
+      state.dispatchTime = null;
+      return;
+    }
+
+    if (targetQueue) {
+      if (strict) {
+        const validTransition = dashboardTransitions.find(
+          (t) =>
+            t.fromQueueId === currentTask.queueId &&
+            t.toQueueId === targetQueue.id &&
+            (t.actorType === 'assistant' || t.actorType === 'both'),
+        );
+
+        if (validTransition) {
+          moveTask(db, taskId, targetQueue.id, AGENT_ID, `Agent routed to ${targetQueue.name}`);
+          emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+        } else {
+          setTaskError(
+            db,
+            taskId,
+            `No valid transition to "${targetQueue.name}" from current queue`,
+          );
+          emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+        }
+      } else {
+        moveTask(db, taskId, targetQueue.id, AGENT_ID, `Agent routed to ${targetQueue.name}`);
+        emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+      }
+    } else {
+      if (strict) {
+        const humanTransition = dashboardTransitions.find(
+          (t) =>
+            t.fromQueueId === currentTask.queueId &&
+            (t.actorType === 'assistant' || t.actorType === 'both') &&
+            allQueues.find((q) => q.id === t.toQueueId && q.ownerType === 'human'),
+        );
+        if (humanTransition) {
+          const fallbackQueue = allQueues.find((q) => q.id === humanTransition.toQueueId)!;
+          moveTask(
+            db,
+            taskId,
+            fallbackQueue.id,
+            AGENT_ID,
+            `Agent output: "${targetName}" (unknown queue, routed to ${fallbackQueue.name})`,
+          );
+          emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+        } else {
+          setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
+          emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+        }
+      } else {
+        setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
+        emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+      }
+    }
+
+    releaseTask(db, taskId);
+    state.currentTaskId = null;
+    state.currentSessionKey = null;
+    state.dispatchTime = null;
   } catch (err) {
-    console.error(`[task-executor] Failed to dispatch task ${task.id}:`, err);
-    setTaskError(db, task.id, String(err));
-    emit({ type: 'task:updated', taskId: task.id, timestamp: Date.now() });
+    const isAbort =
+      err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+    if (isAbort) {
+      const errorMsg = `Execution timeout (30m)`;
+      addComment(db, taskId, 'system', 'agent', `\u26a0\ufe0f ${errorMsg}`);
+      emit({ type: 'task:comment', taskId, timestamp: Date.now() });
+      setTaskError(db, taskId, errorMsg);
+    } else {
+      console.error(`[task-executor] Failed to dispatch task ${taskId}:`, err);
+      setTaskError(db, taskId, String(err));
+    }
+    emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+    releaseTask(db, taskId);
     state.currentTaskId = null;
     state.currentSessionKey = null;
     state.dispatchTime = null;
@@ -349,211 +436,4 @@ export function extractResponseText(messageContent: unknown): string | null {
     return parts.join('\n\n') || null;
   }
   return null;
-}
-
-// ---------------------------------------------------------------------------
-// Session monitor — check if agent finished
-// ---------------------------------------------------------------------------
-
-function monitorSession(
-  db: OpenlareDb,
-  taskId: string,
-  sessionKey: string,
-  dashboardId: string,
-): void {
-  if (!state.running) return;
-
-  void checkSessionCompletion(db, taskId, sessionKey, dashboardId);
-}
-
-async function checkSessionCompletion(
-  db: OpenlareDb,
-  taskId: string,
-  sessionKey: string,
-  dashboardId: string,
-): Promise<void> {
-  try {
-    const result = (await gatewayRpc('chat.history', {
-      sessionKey,
-      limit: 5,
-    })) as { messages?: Array<{ role: string; content: unknown }> } | null;
-
-    const messages = result?.messages ?? [];
-
-    // Only process if the very last message is from the assistant.
-    // When we re-dispatch to the same session, our new user message is appended.
-    // Until the agent responds, the last message is 'user' (our dispatch) —
-    // we must NOT re-process the old assistant MOVE TO from a previous run.
-    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-    const lastAssistant = lastMessage && lastMessage.role === 'assistant' ? lastMessage : null;
-
-    if (lastAssistant) {
-      const content = extractContent(lastAssistant.content);
-
-      // Check timeout first
-      if (state.dispatchTime && Date.now() - state.dispatchTime > EXECUTION_TIMEOUT_MS) {
-        let lastMsg = '';
-        const rawContent =
-          typeof lastAssistant.content === 'string'
-            ? lastAssistant.content
-            : Array.isArray(lastAssistant.content)
-              ? (lastAssistant.content as Array<{ type: string; text?: string }>)
-                  .filter((c) => c.type === 'text' && c.text)
-                  .map((c) => c.text)
-                  .join('\n')
-              : '';
-        lastMsg = rawContent.slice(0, 500);
-        const errorMsg = `Execution timeout (30m)${lastMsg ? `\n\nLast agent message:\n> ${lastMsg}` : ''}`;
-        addComment(db, taskId, 'system', 'agent', `\u26a0\ufe0f ${errorMsg}`);
-        emit({ type: 'task:comment', taskId, timestamp: Date.now() });
-        setTaskError(db, taskId, errorMsg);
-        emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-        state.currentTaskId = null;
-        state.currentSessionKey = null;
-        state.dispatchTime = null;
-        return;
-      }
-
-      // Dedup: skip if we already processed this exact message
-      if (content === state.lastProcessedContent) {
-        // Same content as last processed — agent hasn't sent a new response
-        // Keep polling, don't re-process
-      } else {
-        // Parse MOVE TO: <queue name> from content
-        const targetName = parseMoveDirective(content);
-        if (targetName) {
-          state.lastProcessedContent = content; // Mark as processed
-          // Extract agent response text (everything before MOVE TO:)
-          const resultText = extractResponseText(lastAssistant.content);
-
-          // Save agent response as comment
-          if (resultText) {
-            addComment(db, taskId, AGENT_ID, 'agent', resultText);
-            emit({ type: 'task:comment', taskId, timestamp: Date.now() });
-          }
-
-          const task = getTask(db, taskId);
-          if (!task) {
-            state.currentTaskId = null;
-            state.currentSessionKey = null;
-            state.dispatchTime = null;
-            return;
-          }
-
-          // Handle STUCK
-          if (targetName.toUpperCase() === 'STUCK') {
-            setTaskError(db, taskId, "Agent couldn't determine destination queue");
-            emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-            state.currentTaskId = null;
-            state.currentSessionKey = null;
-            state.dispatchTime = null;
-            return;
-          }
-
-          // Find target queue by name FIRST (case-insensitive).
-          // Must happen before the DONE fallback so that a real queue
-          // named "Done" is matched instead of hitting the fallback path.
-          const allQueues = listQueues(db, task.dashboardId);
-          const targetQueue = allQueues.find(
-            (q) => q.name.toLowerCase() === targetName.toLowerCase(),
-          );
-          const dashboardTransitions = listTransitions(db, task.dashboardId);
-
-          const dashConfig = getDashboard(db, task.dashboardId);
-          const strict = dashConfig?.config?.strictTransitions ?? false;
-
-          // Fallback: DONE with no matching queue (used when no destinations configured)
-          if (!targetQueue && targetName.toUpperCase() === 'DONE') {
-            releaseTask(db, taskId);
-            emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-            state.currentTaskId = null;
-            state.currentSessionKey = null;
-            state.dispatchTime = null;
-            return;
-          }
-
-          if (targetQueue) {
-            if (strict) {
-              // Validate transition exists under strict mode
-              const validTransition = dashboardTransitions.find(
-                (t) =>
-                  t.fromQueueId === task.queueId &&
-                  t.toQueueId === targetQueue.id &&
-                  (t.actorType === 'assistant' || t.actorType === 'both'),
-              );
-
-              if (validTransition) {
-                moveTask(
-                  db,
-                  taskId,
-                  targetQueue.id,
-                  AGENT_ID,
-                  `Agent routed to ${targetQueue.name}`,
-                );
-                emit({ type: 'task:moved', taskId, timestamp: Date.now() });
-              } else {
-                // Valid queue name but no transition — fallback
-                setTaskError(
-                  db,
-                  taskId,
-                  `No valid transition to "${targetQueue.name}" from current queue`,
-                );
-                emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-              }
-            } else {
-              // Free movement — just move it
-              moveTask(db, taskId, targetQueue.id, AGENT_ID, `Agent routed to ${targetQueue.name}`);
-              emit({ type: 'task:moved', taskId, timestamp: Date.now() });
-            }
-          } else {
-            if (strict) {
-              // Unknown queue name — fallback to first reachable human queue via transitions
-              const humanTransition = dashboardTransitions.find(
-                (t) =>
-                  t.fromQueueId === task.queueId &&
-                  (t.actorType === 'assistant' || t.actorType === 'both') &&
-                  allQueues.find((q) => q.id === t.toQueueId && q.ownerType === 'human'),
-              );
-              if (humanTransition) {
-                const fallbackQueue = allQueues.find((q) => q.id === humanTransition.toQueueId)!;
-                moveTask(
-                  db,
-                  taskId,
-                  fallbackQueue.id,
-                  AGENT_ID,
-                  `Agent output: "${targetName}" (unknown queue, routed to ${fallbackQueue.name})`,
-                );
-                emit({ type: 'task:moved', taskId, timestamp: Date.now() });
-              } else {
-                setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
-                emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-              }
-            } else {
-              // Free movement but unknown queue name — error
-              setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
-              emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-            }
-          }
-
-          releaseTask(db, taskId);
-          state.currentTaskId = null;
-          state.currentSessionKey = null;
-          state.dispatchTime = null;
-          state.lastProcessedContent = null;
-          return;
-        }
-      }
-    } // end dedup else
-    // No completion signal yet — keep polling
-  } catch (err) {
-    console.error(`[task-executor] Monitor error for task ${taskId}:`, err);
-  }
-
-  // Schedule next check
-  if (state.running && state.currentTaskId === taskId) {
-    state.monitorTimer = setTimeout(
-      () => monitorSession(db, taskId, sessionKey, dashboardId),
-      MONITOR_INTERVAL_MS,
-    );
-  }
 }
