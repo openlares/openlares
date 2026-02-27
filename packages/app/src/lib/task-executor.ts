@@ -15,6 +15,8 @@ import {
   moveTask,
   getTask,
   listTransitions,
+  addComment,
+  listComments,
   type OpenlareDb,
 } from '@openlares/db';
 
@@ -185,7 +187,8 @@ async function dispatchTask(
   dashboardId: string,
 ): Promise<void> {
   try {
-    const prompt = buildPrompt(task);
+    const comments = listComments(db, task.id);
+    const prompt = buildPrompt(task, comments);
 
     await gatewayRpc('chat.send', {
       idempotencyKey: crypto.randomUUID(),
@@ -204,10 +207,20 @@ async function dispatchTask(
   }
 }
 
-function buildPrompt(task: { title: string; description: string | null }): string {
+function buildPrompt(
+  task: { title: string; description: string | null },
+  comments: Array<{ author: string; authorType: string; content: string }> = [],
+): string {
   let prompt = `# Task: ${task.title}\n\n`;
   if (task.description) {
     prompt += `${task.description}\n\n`;
+  }
+  if (comments.length > 0) {
+    prompt += `## Previous conversation:\n`;
+    for (const c of comments) {
+      const label = c.authorType === 'agent' ? `[agent]` : `[human]`;
+      prompt += `${label}: ${c.content}\n\n`;
+    }
   }
   prompt += `When you have completed this task, your last message should clearly state "TASK COMPLETE" or explain what went wrong.`;
   return prompt;
@@ -278,7 +291,13 @@ async function checkSessionCompletion(
             moveTask(db, taskId, nextTransition.toQueueId, AGENT_ID, 'Auto-completed by agent');
             emit({ type: 'task:moved', taskId, timestamp: Date.now() });
           }
-          completeTask(db, taskId, resultText ?? undefined);
+          // Save agent response as a comment
+          if (resultText) {
+            addComment(db, taskId, AGENT_ID, 'agent', resultText);
+            emit({ type: 'task:comment', taskId, timestamp: Date.now() });
+          }
+
+          completeTask(db, taskId);
           emit({ type: 'task:completed', taskId, timestamp: Date.now() });
         }
 

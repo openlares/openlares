@@ -86,8 +86,6 @@ export const tasks = sqliteTable('tasks', {
     .references(() => queues.id),
   title: text('title').notNull(),
   description: text('description'),
-  /** Agent result / output when task completes. */
-  result: text('result'),
   /** Higher = more urgent. Default 0. */
   priority: integer('priority').notNull().default(0),
   /** Execution status within the current queue. */
@@ -101,6 +99,22 @@ export const tasks = sqliteTable('tasks', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+});
+
+// ---------------------------------------------------------------------------
+// Task Comments (conversation thread per task)
+// ---------------------------------------------------------------------------
+
+export const taskComments = sqliteTable('task_comments', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id')
+    .notNull()
+    .references(() => tasks.id, { onDelete: 'cascade' }),
+  /** 'human' or agent ID like 'main'. */
+  author: text('author').notNull(),
+  authorType: text('author_type', { enum: ['human', 'agent'] }).notNull(),
+  content: text('content').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
 // ---------------------------------------------------------------------------

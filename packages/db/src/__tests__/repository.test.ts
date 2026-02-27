@@ -25,6 +25,8 @@ import {
   getNextClaimableTask,
   getTaskHistory,
   seedDefaultDashboard,
+  addComment,
+  listComments,
 } from '../repository';
 import type { OpenlareDb } from '../client';
 
@@ -53,7 +55,7 @@ function createTestDb(): OpenlareDb {
     );
     CREATE TABLE tasks (
       id TEXT PRIMARY KEY, dashboard_id TEXT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
-      queue_id TEXT NOT NULL REFERENCES queues(id), title TEXT NOT NULL, description TEXT, result TEXT,
+      queue_id TEXT NOT NULL REFERENCES queues(id), title TEXT NOT NULL, description TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
       session_key TEXT, assigned_agent TEXT,
@@ -63,6 +65,11 @@ function createTestDb(): OpenlareDb {
       id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
       filename TEXT NOT NULL, path TEXT NOT NULL, mime_type TEXT, size INTEGER,
       created_at INTEGER NOT NULL
+    );
+    CREATE TABLE task_comments (
+      id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      author TEXT NOT NULL, author_type TEXT NOT NULL,
+      content TEXT NOT NULL, created_at INTEGER NOT NULL
     );
     CREATE TABLE task_history (
       id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -471,5 +478,53 @@ describe('updateQueuePositions', () => {
     updateQueuePositions(db, []);
     const qs = listQueues(db, dashboardId);
     expect(qs.map((q) => q.position)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('Task Comments', () => {
+  let db: OpenlareDb;
+  let dashboardId: string;
+  let queueId: string;
+  let taskId: string;
+
+  beforeEach(() => {
+    db = createTestDb();
+    dashboardId = createDashboard(db, { name: 'Board' }).id;
+    queueId = createQueue(db, { dashboardId, name: 'Todo', ownerType: 'human', position: 0 }).id;
+    taskId = createTask(db, { dashboardId, queueId, title: 'Comment test' }).id;
+  });
+
+  it('adds a comment and retrieves it', () => {
+    const comment = addComment(db, taskId, 'main', 'agent', 'Task done!');
+    expect(comment.id).toBeTruthy();
+    expect(comment.taskId).toBe(taskId);
+    expect(comment.author).toBe('main');
+    expect(comment.authorType).toBe('agent');
+    expect(comment.content).toBe('Task done!');
+    expect(comment.createdAt).toBeInstanceOf(Date);
+  });
+
+  it('lists comments in chronological order', () => {
+    addComment(db, taskId, 'main', 'agent', 'First response');
+    addComment(db, taskId, 'human', 'human', 'Not satisfied');
+    addComment(db, taskId, 'main', 'agent', 'Second response');
+
+    const comments = listComments(db, taskId);
+    expect(comments).toHaveLength(3);
+    expect(comments[0]!.content).toBe('First response');
+    expect(comments[1]!.content).toBe('Not satisfied');
+    expect(comments[2]!.content).toBe('Second response');
+  });
+
+  it('returns empty array for task with no comments', () => {
+    expect(listComments(db, taskId)).toHaveLength(0);
+  });
+
+  it('cascades delete when task is deleted', () => {
+    addComment(db, taskId, 'human', 'human', 'A comment');
+    expect(listComments(db, taskId)).toHaveLength(1);
+
+    deleteTask(db, taskId);
+    expect(listComments(db, taskId)).toHaveLength(0);
   });
 });

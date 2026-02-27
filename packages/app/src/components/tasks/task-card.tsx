@@ -81,10 +81,6 @@ export function TaskCard({ task, onSelect }: TaskCardProps) {
         <p className="mt-1 line-clamp-2 text-xs text-slate-400">{task.description}</p>
       )}
 
-      {task.result && (
-        <p className="mt-1 line-clamp-2 text-xs text-emerald-400/80">✔ {task.result}</p>
-      )}
-
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {task.priority > 0 && (
           <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">

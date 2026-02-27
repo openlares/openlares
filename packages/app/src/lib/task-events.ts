@@ -12,7 +12,8 @@ export type TaskEventType =
   | 'task:moved'
   | 'task:created'
   | 'task:updated'
-  | 'task:deleted';
+  | 'task:deleted'
+  | 'task:comment';
 
 export interface TaskEvent {
   type: TaskEventType;
