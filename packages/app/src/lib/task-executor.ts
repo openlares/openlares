@@ -361,8 +361,12 @@ async function checkSessionCompletion(
 
     const messages = result?.messages ?? [];
 
-    // Look at the last assistant message
-    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+    // Only process if the very last message is from the assistant.
+    // When we re-dispatch to the same session, our new user message is appended.
+    // Until the agent responds, the last message is 'user' (our dispatch) —
+    // we must NOT re-process the old assistant MOVE TO from a previous run.
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    const lastAssistant = lastMessage && lastMessage.role === 'assistant' ? lastMessage : null;
 
     if (lastAssistant) {
       const content = extractContent(lastAssistant.content);
