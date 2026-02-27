@@ -39,6 +39,8 @@ export interface GatewayClientOptions {
   token: string;
   /** Request timeout in ms (default 10 000). */
   requestTimeoutMs?: number;
+  /** Origin header for server-side WebSocket connections. */
+  origin?: string;
 }
 
 /** Handler for gateway events. */
@@ -97,6 +99,7 @@ export class GatewayClient {
   private readonly url: string;
   private readonly token: string;
   private readonly requestTimeoutMs: number;
+  private readonly origin?: string;
 
   private ws: WebSocket | null = null;
   private _status: ConnectionStatus = 'disconnected';
@@ -110,7 +113,6 @@ export class GatewayClient {
   private shouldReconnect = false;
 
   // Handshake state
-  // Handshake state
   private connectNonce: string | undefined;
 
   // Device identity for gateway auth
@@ -123,6 +125,7 @@ export class GatewayClient {
     this.url = options.url;
     this.token = options.token;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.origin = options.origin;
   }
 
   // -----------------------------------------------------------------------
@@ -226,7 +229,9 @@ export class GatewayClient {
       this.connectReject = reject;
 
       try {
-        const ws = new WebSocket(this.url);
+        const ws = this.origin
+          ? new WebSocket(this.url, { headers: { Origin: this.origin } } as never)
+          : new WebSocket(this.url);
         this.ws = ws;
 
         ws.addEventListener('message', this.handleMessage);
