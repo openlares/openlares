@@ -7,6 +7,7 @@ import {
   claimTask,
   completeTask,
   failTask,
+  resetTask,
   updateTask,
   deleteTask,
   getTaskHistory,
@@ -105,6 +106,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!result) return NextResponse.json({ error: 'not found' }, { status: 404 });
       emit({ type: 'task:failed', taskId: id, timestamp: Date.now() });
       return NextResponse.json(serializeTask(result));
+    }
+
+    case 'reset': {
+      const reset = resetTask(db, id);
+      if (!reset) {
+        return NextResponse.json(
+          { error: 'Task not found or not in failed/completed state' },
+          { status: 400 },
+        );
+      }
+      emit({ type: 'task:updated', taskId: id, timestamp: Date.now() });
+      return NextResponse.json(serializeTask(reset));
     }
 
     case 'update': {
