@@ -372,7 +372,6 @@ export function KanbanBoard({
                 tasks={tasksByQueue[queue.id] ?? []}
                 onAddTask={(queueId) => setShowAddModal(queueId)}
                 onSelectTask={setSelectedTask}
-                onRetryTask={handleRetryTask}
               />
             ))}
           </DndContext>
@@ -461,6 +460,7 @@ export function KanbanBoard({
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdateTask}
           onDelete={handleDeleteTask}
+          onRetry={handleRetryTask}
         />
       )}
     </div>
