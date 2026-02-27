@@ -322,7 +322,12 @@ async function checkSessionCompletion(
       const content =
         typeof lastAssistant.content === 'string'
           ? lastAssistant.content
-          : JSON.stringify(lastAssistant.content);
+          : Array.isArray(lastAssistant.content)
+            ? (lastAssistant.content as Array<{ type: string; text?: string }>)
+                .filter((c) => c.type === 'text' && c.text)
+                .map((c) => c.text)
+                .join('\n')
+            : JSON.stringify(lastAssistant.content);
 
       // Check timeout first
       if (state.dispatchTime && Date.now() - state.dispatchTime > EXECUTION_TIMEOUT_MS) {
@@ -351,7 +356,7 @@ async function checkSessionCompletion(
       // Parse MOVE TO: <queue name> from content
       const moveMatch = content.match(/MOVE TO:\s*(.+?)$/im);
       if (moveMatch) {
-        const targetName = (moveMatch[1] ?? '').trim();
+        const targetName = (moveMatch[1] ?? '').replace(/[^a-zA-Z0-9 _-]+$/, '').trim();
 
         // Extract agent response text (everything before MOVE TO:)
         let resultText: string | null = null;
