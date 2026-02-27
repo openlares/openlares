@@ -291,6 +291,71 @@ export function TaskDetail({
               </div>
             )}
           </div>
+
+          {/* Comments section */}
+          <div className="mt-4 border-t border-slate-700/50 pt-3">
+            <h4 className="mb-2 text-xs font-medium text-slate-400">
+              Comments {!commentsLoading && `(${comments.length})`}
+            </h4>
+
+            {commentsLoading ? (
+              <p className="text-xs text-slate-500">Loading...</p>
+            ) : comments.length === 0 ? (
+              <p className="text-xs text-slate-500">No comments yet</p>
+            ) : (
+              <div className="mb-3 max-h-48 space-y-2 overflow-y-auto">
+                {comments.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`rounded-lg p-2 text-sm ${
+                      c.authorType === 'agent'
+                        ? 'bg-cyan-500/10 ring-1 ring-cyan-500/20'
+                        : 'bg-slate-700/50 ring-1 ring-slate-600'
+                    }`}
+                  >
+                    <div className="mb-1 flex items-center justify-between">
+                      <span
+                        className={`text-xs font-medium ${
+                          c.authorType === 'agent' ? 'text-cyan-400' : 'text-slate-300'
+                        }`}
+                      >
+                        {c.authorType === 'agent' ? `🤖 ${c.author}` : '👤 You'}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {new Date(c.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-slate-200">{c.content}</p>
+                  </div>
+                ))}
+                <div ref={commentsEndRef} />
+              </div>
+            )}
+
+            {/* Add comment input */}
+            <div className="flex gap-2">
+              <textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Add a comment..."
+                rows={2}
+                className="flex-1 resize-none rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleAddComment();
+                  }
+                }}
+              />
+              <button
+                onClick={handleAddComment}
+                disabled={!newComment.trim() || postingComment}
+                className="self-end rounded-lg bg-cyan-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+              >
+                {postingComment ? '...' : 'Send'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
