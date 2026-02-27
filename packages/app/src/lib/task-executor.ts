@@ -284,7 +284,22 @@ async function dispatchTask(
     });
 
     state.dispatchTime = Date.now();
-    state.lastProcessedContent = null; // Reset dedup guard for fresh dispatch
+
+    // Snapshot the current last assistant message content BEFORE monitoring.
+    // On re-dispatch to the same session, the old assistant MOVE TO message
+    // may still be the last message (chat.send is async). By recording it here,
+    // the dedup guard will skip it and only process genuinely new responses.
+    try {
+      const snapshot = (await gatewayRpc('chat.history', {
+        sessionKey,
+        limit: 3,
+      })) as { messages?: Array<{ role: string; content: unknown }> } | null;
+      const msgs = snapshot?.messages ?? [];
+      const lastAsst = [...msgs].reverse().find((m) => m.role === 'assistant');
+      state.lastProcessedContent = lastAsst ? extractContent(lastAsst.content) : null;
+    } catch {
+      state.lastProcessedContent = null;
+    }
 
     // Start monitoring this session
     monitorSession(db, task.id, sessionKey, dashboardId);
