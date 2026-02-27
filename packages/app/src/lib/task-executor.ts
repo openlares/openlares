@@ -56,6 +56,7 @@ const AGENT_ID = 'main';
 // ---------------------------------------------------------------------------
 
 import { GatewayClient } from '@openlares/api-client';
+import { getServerDeviceIdentity } from '@openlares/api-client/server-identity';
 
 let gatewayConfig: GatewayConfig | null = null;
 let gatewayClient: GatewayClient | null = null;
@@ -86,10 +87,12 @@ async function ensureGatewayConnected(): Promise<GatewayClient> {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   }
 
+  const serverIdentity = await getServerDeviceIdentity();
   const client = new GatewayClient({
     url: gatewayConfig.url,
     token: gatewayConfig.token,
-    origin: 'openlares-executor',
+    origin: 'https://localhost:3000',
+    serverDeviceIdentity: serverIdentity,
   });
 
   await client.connect();
@@ -185,6 +188,7 @@ async function dispatchTask(
     const prompt = buildPrompt(task);
 
     await gatewayRpc('chat.send', {
+      idempotencyKey: crypto.randomUUID(),
       sessionKey,
       message: prompt,
     });
