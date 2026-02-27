@@ -132,7 +132,15 @@ export function getExecutorStatus() {
 }
 
 export function startExecutor(dashboardId: string): void {
-  if (state.running) return;
+  // Clear any stale timers (HMR can kill setTimeout chains while globalThis state persists)
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+  }
+  if (state.monitorTimer) {
+    clearTimeout(state.monitorTimer);
+    state.monitorTimer = null;
+  }
   state.running = true;
   emit({ type: 'executor:started', timestamp: Date.now() });
   pollForWork(dashboardId);
@@ -304,9 +312,9 @@ export function extractContent(messageContent: unknown): string {
 
 /** Parse MOVE TO directive from content. Returns null if not found. */
 export function parseMoveDirective(content: string): string | null {
-  const match = content.match(/MOVE TO:\s*(.+?)$/im);
+  const match = content.match(/MOVE TO:\s*([\w][\w -]*)/im);
   if (!match) return null;
-  return (match[1] ?? '').replace(/[^a-zA-Z0-9 _-]+$/g, '').trim() || null;
+  return (match[1] ?? '').trim() || null;
 }
 
 /** Extract agent response text (everything before MOVE TO:). */
@@ -384,10 +392,8 @@ async function checkSessionCompletion(
       }
 
       // Parse MOVE TO: <queue name> from content
-      const moveMatch = content.match(/MOVE TO:\s*(.+?)$/im);
-      if (moveMatch) {
-        const targetName = (moveMatch[1] ?? '').replace(/[^a-zA-Z0-9 _-]+$/, '').trim();
-
+      const targetName = parseMoveDirective(content);
+      if (targetName) {
         // Extract agent response text (everything before MOVE TO:)
         const resultText = extractResponseText(lastAssistant.content);
 
@@ -415,17 +421,9 @@ async function checkSessionCompletion(
           return;
         }
 
-        // Handle DONE (no destinations configured)
-        if (targetName.toUpperCase() === 'DONE') {
-          releaseTask(db, taskId);
-          emit({ type: 'task:updated', taskId, timestamp: Date.now() });
-          state.currentTaskId = null;
-          state.currentSessionKey = null;
-          state.dispatchTime = null;
-          return;
-        }
-
-        // Find target queue by name (case-insensitive)
+        // Find target queue by name FIRST (case-insensitive).
+        // Must happen before the DONE fallback so that a real queue
+        // named "Done" is matched instead of hitting the fallback path.
         const allQueues = listQueues(db, task.dashboardId);
         const targetQueue = allQueues.find(
           (q) => q.name.toLowerCase() === targetName.toLowerCase(),
@@ -434,6 +432,16 @@ async function checkSessionCompletion(
 
         const dashConfig = getDashboard(db, task.dashboardId);
         const strict = dashConfig?.config?.strictTransitions ?? false;
+
+        // Fallback: DONE with no matching queue (used when no destinations configured)
+        if (!targetQueue && targetName.toUpperCase() === 'DONE') {
+          releaseTask(db, taskId);
+          emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+          state.currentTaskId = null;
+          state.currentSessionKey = null;
+          state.dispatchTime = null;
+          return;
+        }
 
         if (targetQueue) {
           if (strict) {

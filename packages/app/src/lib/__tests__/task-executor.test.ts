@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  extractContent,
-  parseMoveDirective,
-  extractResponseText,
-} from '../task-executor';
+import { extractContent, parseMoveDirective, extractResponseText } from '../task-executor';
 
 describe('extractContent', () => {
   it('returns string content as-is', () => {
@@ -81,6 +77,22 @@ describe('parseMoveDirective', () => {
     const content = 'Line 1\nMOVE TO: Review\nLine 3';
     expect(parseMoveDirective(content)).toBe('Review');
   });
+
+  it('handles MOVE TO inside markdown backticks (real bug)', () => {
+    // Agent wrote: my `MOVE TO: Done` lines are being **stripped**
+    const content = 'my `MOVE TO: Done` lines are being **stripped**';
+    expect(parseMoveDirective(content)).toBe('Done');
+  });
+
+  it('handles MOVE TO followed by period and backtick', () => {
+    const content = 'Task complete.\nMOVE TO: Done`.';
+    expect(parseMoveDirective(content)).toBe('Done');
+  });
+
+  it('handles MOVE TO with trailing markdown formatting', () => {
+    const content = 'Result: **MOVE TO: In Progress**';
+    expect(parseMoveDirective(content)).toBe('In Progress');
+  });
 });
 
 describe('extractResponseText', () => {
@@ -89,9 +101,7 @@ describe('extractResponseText', () => {
   });
 
   it('extracts text before MOVE TO from content blocks', () => {
-    const blocks = [
-      { type: 'text', text: 'Analysis complete.\nMOVE TO: Done' },
-    ];
+    const blocks = [{ type: 'text', text: 'Analysis complete.\nMOVE TO: Done' }];
     expect(extractResponseText(blocks)).toBe('Analysis complete.');
   });
 
