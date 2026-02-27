@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import type { Dashboard, Queue, Transition } from './types';
+import { useToastStore } from '@/lib/toast-store';
 
 interface DashboardConfigProps {
   dashboard: Dashboard;
@@ -27,12 +28,13 @@ export function DashboardConfig({
   const [transitions, setTransitions] = useState(initialTransitions);
   const [newQueueName, setNewQueueName] = useState('');
   const [newQueueOwner, setNewQueueOwner] = useState<Queue['ownerType']>('human');
-  const [error, setError] = useState<string | null>(null);
   const [deletingQueueId, setDeletingQueueId] = useState<string | null>(null);
   const [deletingTransitionId, setDeletingTransitionId] = useState<string | null>(null);
   const [strictTransitions, setStrictTransitions] = useState(
     dashboard.config?.strictTransitions ?? false,
   );
+
+  const addToast = useToastStore((s) => s.addToast);
 
   /** Refetch queues + transitions from API. */
   const refetch = useCallback(async () => {
@@ -47,7 +49,6 @@ export function DashboardConfig({
   // Add a new queue
   const handleAddQueue = useCallback(async () => {
     if (!newQueueName.trim()) return;
-    setError(null);
 
     try {
       const res = await fetch(`/api/dashboards/${dashboard.id}/queues`, {
@@ -65,32 +66,32 @@ export function DashboardConfig({
         setNewQueueName('');
       } else {
         const errData = (await res.json()) as { error?: string };
-        setError(errData.error ?? 'Failed to add queue');
+        addToast('error', errData.error ?? 'Failed to add queue');
       }
     } catch {
-      setError('Network error');
+      addToast('error', 'Network error — check your connection');
     }
-  }, [dashboard.id, newQueueName, newQueueOwner, queues.length, refetch]);
+  }, [dashboard.id, newQueueName, newQueueOwner, queues.length, refetch, addToast]);
 
   // Delete a queue (with confirmation)
   const handleDeleteQueue = useCallback(
     async (queueId: string) => {
-      setError(null);
       try {
         const res = await fetch(`/api/queues/${queueId}`, { method: 'DELETE' });
         if (res.ok) {
+          addToast('success', 'Queue deleted');
           await refetch();
         } else {
           const errData = (await res.json()) as { error?: string };
-          setError(errData.error ?? 'Failed to delete queue');
+          addToast('error', errData.error ?? 'Failed to delete queue');
         }
       } catch {
-        setError('Network error');
+        addToast('error', 'Network error — check your connection');
       } finally {
         setDeletingQueueId(null);
       }
     },
-    [refetch],
+    [refetch, addToast],
   );
 
   // Move a queue up or down
@@ -115,7 +116,6 @@ export function DashboardConfig({
       setQueues(updated.sort((x, y) => x.position - y.position));
 
       // Persist
-      setError(null);
       try {
         const res = await fetch(`/api/dashboards/${dashboard.id}/queues`, {
           method: 'PATCH',
@@ -129,21 +129,20 @@ export function DashboardConfig({
         });
         if (!res.ok) {
           const errData = (await res.json()) as { error?: string };
-          setError(errData.error ?? 'Failed to reorder queues');
+          addToast('error', errData.error ?? 'Failed to reorder queues');
           await refetch(); // Roll back optimistic update
         }
       } catch {
-        setError('Network error');
+        addToast('error', 'Network error — check your connection');
         await refetch();
       }
     },
-    [queues, dashboard.id, refetch],
+    [queues, dashboard.id, refetch, addToast],
   );
 
   // Add transition
   const handleAddTransition = useCallback(
     async (fromId: string, toId: string, actorType: Transition['actorType']) => {
-      setError(null);
       try {
         const res = await fetch(`/api/dashboards/${dashboard.id}/transitions`, {
           method: 'POST',
@@ -153,53 +152,59 @@ export function DashboardConfig({
         if (res.ok) {
           await refetch();
         } else {
-          setError('Failed to add transition');
+          const errData = (await res.json()) as { error?: string };
+          addToast('error', errData.error ?? 'Failed to add transition');
         }
       } catch {
-        setError('Failed to add transition');
+        addToast('error', 'Network error — check your connection');
       }
     },
-    [dashboard.id, refetch],
+    [dashboard.id, refetch, addToast],
   );
 
   // Delete a transition (with confirmation)
   const handleDeleteTransition = useCallback(
     async (transitionId: string) => {
-      setError(null);
       try {
         const res = await fetch(`/api/transitions/${transitionId}`, { method: 'DELETE' });
         if (res.ok) {
+          addToast('success', 'Transition deleted');
           await refetch();
         } else {
           const errData = (await res.json()) as { error?: string };
-          setError(errData.error ?? 'Failed to delete transition');
+          addToast('error', errData.error ?? 'Failed to delete transition');
         }
       } catch {
-        setError('Network error');
+        addToast('error', 'Network error — check your connection');
       } finally {
         setDeletingTransitionId(null);
       }
     },
-    [refetch],
+    [refetch, addToast],
   );
 
   const handleToggleStrict = useCallback(
     async (enabled: boolean) => {
       setStrictTransitions(enabled);
-      setError(null);
       try {
-        await fetch(`/api/dashboards/${dashboard.id}`, {
+        const res = await fetch(`/api/dashboards/${dashboard.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             config: { ...dashboard.config, strictTransitions: enabled },
           }),
         });
+        if (!res.ok) {
+          const errData = (await res.json()) as { error?: string };
+          addToast('error', errData.error ?? 'Failed to update strict transitions setting');
+          setStrictTransitions(!enabled); // revert
+        }
       } catch {
-        setError('Failed to update strict transitions setting');
+        addToast('error', 'Network error — check your connection');
+        setStrictTransitions(!enabled); // revert
       }
     },
-    [dashboard.id, dashboard.config],
+    [dashboard.id, dashboard.config, addToast],
   );
 
   const handleSave = useCallback(() => {
@@ -221,12 +226,6 @@ export function DashboardConfig({
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto p-5">
-          {error && (
-            <div className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
           {/* Queues */}
           <h4 className="mb-3 text-sm font-semibold text-slate-200">Queues (columns)</h4>
           <div className="mb-4 space-y-2">
