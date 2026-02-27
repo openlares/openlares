@@ -7,10 +7,6 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./server-identity": {
-      "types": "./src/server-identity.ts",
-      "default": "./src/server-identity.ts"
     }
   },
   "scripts": {
