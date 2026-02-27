@@ -30,6 +30,9 @@ export function DashboardConfig({
   const [error, setError] = useState<string | null>(null);
   const [deletingQueueId, setDeletingQueueId] = useState<string | null>(null);
   const [deletingTransitionId, setDeletingTransitionId] = useState<string | null>(null);
+  const [strictTransitions, setStrictTransitions] = useState(
+    dashboard.config?.strictTransitions ?? false,
+  );
 
   /** Refetch queues + transitions from API. */
   const refetch = useCallback(async () => {
@@ -180,6 +183,25 @@ export function DashboardConfig({
     [refetch],
   );
 
+  const handleToggleStrict = useCallback(
+    async (enabled: boolean) => {
+      setStrictTransitions(enabled);
+      setError(null);
+      try {
+        await fetch(`/api/dashboards/${dashboard.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            config: { ...dashboard.config, strictTransitions: enabled },
+          }),
+        });
+      } catch {
+        setError('Failed to update strict transitions setting');
+      }
+    },
+    [dashboard.id, dashboard.config],
+  );
+
   const handleSave = useCallback(() => {
     onQueuesChange(queues, transitions);
     onClose();
@@ -315,70 +337,104 @@ export function DashboardConfig({
             </button>
           </div>
 
-          {/* Transitions */}
-          <h4 className="mb-3 text-sm font-semibold text-slate-200">Transitions (allowed moves)</h4>
-          <div className="mb-4 space-y-2">
-            {transitions.map((t) => {
-              const from = queues.find((q) => q.id === t.fromQueueId);
-              const to = queues.find((q) => q.id === t.toQueueId);
-              return (
-                <div
-                  key={t.id}
-                  className="flex items-center gap-2 rounded-lg bg-slate-700/30 px-3 py-2 text-sm"
-                >
-                  <span className="text-slate-200">{from?.name ?? '?'}</span>
-                  <span className="text-slate-500">→</span>
-                  <span className="text-slate-200">{to?.name ?? '?'}</span>
-                  <span
-                    className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                      t.actorType === 'human'
-                        ? 'bg-blue-500/20 text-blue-300'
-                        : t.actorType === 'assistant'
-                          ? 'bg-purple-500/20 text-purple-300'
-                          : 'bg-amber-500/20 text-amber-300'
-                    }`}
-                  >
-                    {t.actorType === 'human' ? '👤' : t.actorType === 'assistant' ? '🤖' : '👤🤖'}{' '}
-                    {t.actorType}
-                  </span>
-
-                  {/* Delete transition with confirmation */}
-                  {deletingTransitionId === t.id ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-red-400">Delete?</span>
-                      <button
-                        onClick={() => void handleDeleteTransition(t.id)}
-                        className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/40"
-                      >
-                        Yes
-                      </button>
-                      <button
-                        onClick={() => setDeletingTransitionId(null)}
-                        className="rounded bg-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-500"
-                      >
-                        No
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setDeletingTransitionId(t.id)}
-                      title="Delete transition"
-                      className="text-slate-500 hover:text-red-400"
-                    >
-                      🗑️
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-            {transitions.length === 0 && (
-              <p className="text-xs text-slate-500">No transitions defined yet.</p>
-            )}
+          {/* Strict Transitions toggle */}
+          <div className="mb-4 flex items-center justify-between rounded-lg bg-slate-700/30 px-4 py-3">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-200">Strict Transitions</h4>
+              <p className="text-xs text-slate-400">
+                {strictTransitions
+                  ? 'Only defined transitions are allowed'
+                  : 'Free movement — tasks can move between any queues'}
+              </p>
+            </div>
+            <button
+              onClick={() => void handleToggleStrict(!strictTransitions)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                strictTransitions ? 'bg-cyan-600' : 'bg-slate-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  strictTransitions ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
 
-          {/* Quick add transition */}
-          {queues.length >= 2 && (
-            <TransitionAdder queues={sortedQueues} onAdd={handleAddTransition} />
+          {/* Transitions (only shown when strict mode is on) */}
+          {strictTransitions && (
+            <>
+              <h4 className="mb-3 text-sm font-semibold text-slate-200">
+                Transitions (allowed moves)
+              </h4>
+              <div className="mb-4 space-y-2">
+                {transitions.map((t) => {
+                  const from = queues.find((q) => q.id === t.fromQueueId);
+                  const to = queues.find((q) => q.id === t.toQueueId);
+                  return (
+                    <div
+                      key={t.id}
+                      className="flex items-center gap-2 rounded-lg bg-slate-700/30 px-3 py-2 text-sm"
+                    >
+                      <span className="text-slate-200">{from?.name ?? '?'}</span>
+                      <span className="text-slate-500">→</span>
+                      <span className="text-slate-200">{to?.name ?? '?'}</span>
+                      <span
+                        className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          t.actorType === 'human'
+                            ? 'bg-blue-500/20 text-blue-300'
+                            : t.actorType === 'assistant'
+                              ? 'bg-purple-500/20 text-purple-300'
+                              : 'bg-amber-500/20 text-amber-300'
+                        }`}
+                      >
+                        {t.actorType === 'human'
+                          ? '👤'
+                          : t.actorType === 'assistant'
+                            ? '🤖'
+                            : '👤🤖'}{' '}
+                        {t.actorType}
+                      </span>
+
+                      {/* Delete transition with confirmation */}
+                      {deletingTransitionId === t.id ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-red-400">Delete?</span>
+                          <button
+                            onClick={() => void handleDeleteTransition(t.id)}
+                            className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/40"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setDeletingTransitionId(null)}
+                            className="rounded bg-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-500"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeletingTransitionId(t.id)}
+                          title="Delete transition"
+                          className="text-slate-500 hover:text-red-400"
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {transitions.length === 0 && (
+                  <p className="text-xs text-slate-500">No transitions defined yet.</p>
+                )}
+              </div>
+
+              {/* Quick add transition */}
+              {queues.length >= 2 && (
+                <TransitionAdder queues={sortedQueues} onAdd={handleAddTransition} />
+              )}
+            </>
           )}
         </div>
 

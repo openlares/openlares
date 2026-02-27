@@ -44,6 +44,26 @@ export function getDashboard(db: OpenlareDb, id: string) {
   return db.select().from(dashboards).where(eq(dashboards.id, id)).get();
 }
 
+export function updateDashboard(
+  db: OpenlareDb,
+  id: string,
+  data: { name?: string; config?: DashboardConfig },
+) {
+  const existing = getDashboard(db, id);
+  if (!existing) return null;
+
+  db.update(dashboards)
+    .set({
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.config !== undefined ? { config: data.config } : {}),
+      updatedAt: now(),
+    })
+    .where(eq(dashboards.id, id))
+    .run();
+
+  return getDashboard(db, id) ?? null;
+}
+
 export function listDashboards(db: OpenlareDb) {
   return db.select().from(dashboards).orderBy(asc(dashboards.createdAt)).all();
 }
@@ -202,14 +222,21 @@ export function moveTask(
   const task = getTask(db, taskId);
   if (!task) return null;
 
-  // Check transition exists
-  const transition = db
-    .select()
-    .from(transitions)
-    .where(and(eq(transitions.fromQueueId, task.queueId), eq(transitions.toQueueId, toQueueId)))
-    .get();
+  // Validate target queue exists and belongs to same dashboard
+  const targetQueue = getQueue(db, toQueueId);
+  if (!targetQueue || targetQueue.dashboardId !== task.dashboardId) return null;
 
-  if (!transition) return null; // Invalid move
+  // Check transition constraint (only when strictTransitions is enabled)
+  const dashboard = getDashboard(db, task.dashboardId);
+  if (dashboard?.config?.strictTransitions) {
+    const transition = db
+      .select()
+      .from(transitions)
+      .where(and(eq(transitions.fromQueueId, task.queueId), eq(transitions.toQueueId, toQueueId)))
+      .get();
+
+    if (!transition) return null; // Invalid move under strict mode
+  }
 
   const ts = now();
 
@@ -446,7 +473,10 @@ export function seedDefaultDashboard(db: OpenlareDb) {
   const existing = listDashboards(db);
   if (existing.length > 0) return existing[0]!;
 
-  const dashboard = createDashboard(db, { name: 'Default', config: { maxConcurrentAgents: 1 } });
+  const dashboard = createDashboard(db, {
+    name: 'Default',
+    config: { maxConcurrentAgents: 1, strictTransitions: false },
+  });
 
   const todo = createQueue(db, {
     dashboardId: dashboard.id,

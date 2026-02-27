@@ -9,6 +9,7 @@
 import { getDb } from './db';
 import { emit } from './task-events';
 import {
+  getDashboard,
   getNextClaimableTask,
   claimTask,
   setTaskError,
@@ -405,46 +406,61 @@ async function checkSessionCompletion(
         );
         const dashboardTransitions = listTransitions(db, task.dashboardId);
 
-        if (targetQueue) {
-          // Validate transition exists
-          const validTransition = dashboardTransitions.find(
-            (t) =>
-              t.fromQueueId === task.queueId &&
-              t.toQueueId === targetQueue.id &&
-              (t.actorType === 'assistant' || t.actorType === 'both'),
-          );
+        const dashConfig = getDashboard(db, task.dashboardId);
+        const strict = dashConfig?.config?.strictTransitions ?? false;
 
-          if (validTransition) {
+        if (targetQueue) {
+          if (strict) {
+            // Validate transition exists under strict mode
+            const validTransition = dashboardTransitions.find(
+              (t) =>
+                t.fromQueueId === task.queueId &&
+                t.toQueueId === targetQueue.id &&
+                (t.actorType === 'assistant' || t.actorType === 'both'),
+            );
+
+            if (validTransition) {
+              moveTask(db, taskId, targetQueue.id, AGENT_ID, `Agent routed to ${targetQueue.name}`);
+              emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+            } else {
+              // Valid queue name but no transition — fallback
+              setTaskError(
+                db,
+                taskId,
+                `No valid transition to "${targetQueue.name}" from current queue`,
+              );
+              emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+            }
+          } else {
+            // Free movement — just move it
             moveTask(db, taskId, targetQueue.id, AGENT_ID, `Agent routed to ${targetQueue.name}`);
             emit({ type: 'task:moved', taskId, timestamp: Date.now() });
-          } else {
-            // Valid queue name but no transition — fallback
-            setTaskError(
-              db,
-              taskId,
-              `No valid transition to "${targetQueue.name}" from current queue`,
-            );
-            emit({ type: 'task:updated', taskId, timestamp: Date.now() });
           }
         } else {
-          // Unknown queue name — fallback to first reachable human queue
-          const humanTransition = dashboardTransitions.find(
-            (t) =>
-              t.fromQueueId === task.queueId &&
-              (t.actorType === 'assistant' || t.actorType === 'both') &&
-              allQueues.find((q) => q.id === t.toQueueId && q.ownerType === 'human'),
-          );
-          if (humanTransition) {
-            const fallbackQueue = allQueues.find((q) => q.id === humanTransition.toQueueId)!;
-            moveTask(
-              db,
-              taskId,
-              fallbackQueue.id,
-              AGENT_ID,
-              `Agent output: "${targetName}" (unknown queue, routed to ${fallbackQueue.name})`,
+          if (strict) {
+            // Unknown queue name — fallback to first reachable human queue via transitions
+            const humanTransition = dashboardTransitions.find(
+              (t) =>
+                t.fromQueueId === task.queueId &&
+                (t.actorType === 'assistant' || t.actorType === 'both') &&
+                allQueues.find((q) => q.id === t.toQueueId && q.ownerType === 'human'),
             );
-            emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+            if (humanTransition) {
+              const fallbackQueue = allQueues.find((q) => q.id === humanTransition.toQueueId)!;
+              moveTask(
+                db,
+                taskId,
+                fallbackQueue.id,
+                AGENT_ID,
+                `Agent output: "${targetName}" (unknown queue, routed to ${fallbackQueue.name})`,
+              );
+              emit({ type: 'task:moved', taskId, timestamp: Date.now() });
+            } else {
+              setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
+              emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+            }
           } else {
+            // Free movement but unknown queue name — error
             setTaskError(db, taskId, `Unknown destination queue: "${targetName}"`);
             emit({ type: 'task:updated', taskId, timestamp: Date.now() });
           }

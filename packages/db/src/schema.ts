@@ -21,6 +21,8 @@ export const dashboards = sqliteTable('dashboards', {
 });
 
 export interface DashboardConfig {
+  /** When true, only transitions defined in the transitions table are allowed. Default: false (free movement). */
+  strictTransitions?: boolean;
   /** Max concurrent agent tasks across the entire dashboard. */
   maxConcurrentAgents?: number;
 }

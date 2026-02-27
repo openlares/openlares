@@ -3,7 +3,7 @@
 export interface Dashboard {
   id: string;
   name: string;
-  config: { maxConcurrentAgents?: number } | null;
+  config: { maxConcurrentAgents?: number; strictTransitions?: boolean } | null;
   createdAt: number;
   updatedAt: number;
 }

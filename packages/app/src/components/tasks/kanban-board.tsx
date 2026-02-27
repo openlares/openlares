@@ -211,6 +211,8 @@ export function KanbanBoard({
   // Check if a transition is valid
   const canMove = useCallback(
     (fromQueueId: string, toQueueId: string): boolean => {
+      // When strict transitions are disabled, allow any move
+      if (!dashboard.config?.strictTransitions) return true;
       return transitions.some(
         (t) =>
           t.fromQueueId === fromQueueId &&
@@ -218,7 +220,7 @@ export function KanbanBoard({
           (t.actorType === 'human' || t.actorType === 'both'),
       );
     },
-    [transitions],
+    [dashboard.config?.strictTransitions, transitions],
   );
 
   // Handle drag end — move task between queues

@@ -5,6 +5,7 @@ import * as schema from '../schema';
 import {
   createDashboard,
   getDashboard,
+  updateDashboard,
   listDashboards,
   createQueue,
   listQueues,
@@ -198,7 +199,16 @@ describe('Tasks', () => {
     expect(moved?.error).toBeNull();
   });
 
-  it('rejects invalid transitions', () => {
+  it('allows free movement when strictTransitions is off (default)', () => {
+    const task = createTask(db, { dashboardId, queueId: todoId, title: 'Free mover' });
+    // No direct transition from todo → done, but strictTransitions is off
+    const result = moveTask(db, task.id, doneId, 'human');
+    expect(result).not.toBeNull();
+    expect(result!.queueId).toBe(doneId);
+  });
+
+  it('rejects invalid transitions when strictTransitions is on', () => {
+    updateDashboard(db, dashboardId, { config: { strictTransitions: true } });
     const task = createTask(db, { dashboardId, queueId: todoId, title: 'Stay put' });
     // No direct transition from todo → done
     const result = moveTask(db, task.id, doneId, 'human');
