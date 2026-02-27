@@ -1,6 +1,8 @@
 /**
  * Task event emitter singleton — server-side pub/sub for task state changes.
  * Used to push events to connected SSE clients without persistence or replay.
+ *
+ * Uses globalThis to survive Turbopack/HMR module re-evaluation in dev mode.
  */
 
 export type TaskEventType =
@@ -24,7 +26,12 @@ export interface TaskEvent {
 
 type TaskEventCallback = (event: TaskEvent) => void;
 
-const subscribers = new Set<TaskEventCallback>();
+// Persist subscribers across HMR in dev mode
+const g = globalThis as unknown as { __taskEventSubscribers?: Set<TaskEventCallback> };
+if (!g.__taskEventSubscribers) {
+  g.__taskEventSubscribers = new Set<TaskEventCallback>();
+}
+const subscribers = g.__taskEventSubscribers;
 
 export function subscribe(callback: TaskEventCallback): () => void {
   subscribers.add(callback);
