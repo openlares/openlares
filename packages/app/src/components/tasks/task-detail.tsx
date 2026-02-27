@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import type { Task, Queue, TaskHistory } from './types';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import type { Task, Queue, TaskHistory, TaskComment } from './types';
 
 interface TaskDetailProps {
   task: Task;
@@ -37,6 +37,11 @@ export function TaskDetail({
   const [history, setHistory] = useState<TaskHistory[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  const commentsEndRef = useRef<HTMLDivElement>(null);
 
   const isDirty =
     title !== task.title || description !== (task.description ?? '') || priority !== task.priority;
@@ -65,6 +70,38 @@ export function TaskDetail({
       cancelled = true;
     };
   }, [task.id]);
+
+  // Fetch comments on mount
+  useEffect(() => {
+    let cancelled = false;
+    setCommentsLoading(true);
+    fetch(`/api/tasks/${task.id}/comments`)
+      .then((res) => {
+        if (res.ok) return res.json() as Promise<TaskComment[]>;
+        return null;
+      })
+      .then((data) => {
+        if (!cancelled && data) {
+          setComments(data);
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      })
+      .finally(() => {
+        if (!cancelled) setCommentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [task.id]);
+
+  // Scroll to bottom when comments load
+  useEffect(() => {
+    if (comments.length > 0) {
+      commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [comments]);
 
   const handleSave = useCallback(async () => {
     if (!isDirty || saving) return;
@@ -100,6 +137,28 @@ export function TaskDetail({
     }
   }, [task.id, onDelete]);
 
+  const handleAddComment = useCallback(async () => {
+    const content = newComment.trim();
+    if (!content || postingComment) return;
+    setPostingComment(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      if (res.ok) {
+        const comment = (await res.json()) as TaskComment;
+        setComments((prev) => [...prev, comment]);
+        setNewComment('');
+      }
+    } catch {
+      // TODO: error toast
+    } finally {
+      setPostingComment(false);
+    }
+  }, [task.id, newComment, postingComment]);
+
   const resolveQueueName = useCallback(
     (queueId: string | null): string => {
       if (!queueId) return 'None';
@@ -112,7 +171,10 @@ export function TaskDetail({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[10vh]">
-      <div className="w-full max-w-lg rounded-xl bg-slate-800 shadow-2xl">
+      <div
+        className="flex w-full max-w-lg flex-col rounded-xl bg-slate-800 shadow-2xl"
+        style={{ maxHeight: '80vh' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-700/50 px-5 py-3">
           <div className="flex items-center gap-2">
@@ -127,7 +189,7 @@ export function TaskDetail({
         </div>
 
         {/* Body */}
-        <div className="p-5">
+        <div className="flex-1 overflow-y-auto p-5">
           <label className="mb-1 block text-xs text-slate-400">Title</label>
           <input
             value={title}
@@ -152,6 +214,16 @@ export function TaskDetail({
             onChange={(e) => setPriority(Number(e.target.value))}
             className="mb-4 w-24 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
           />
+
+          {/* Result */}
+          {task.result && (
+            <div className="mb-4 rounded-lg bg-emerald-500/10 p-3 ring-1 ring-emerald-500/20">
+              <label className="mb-1 block text-xs font-medium text-emerald-400">
+                Agent Result
+              </label>
+              <p className="whitespace-pre-wrap text-sm text-slate-200">{task.result}</p>
+            </div>
+          )}
 
           {/* Metadata */}
           <div className="mb-4 space-y-1 text-xs text-slate-500">

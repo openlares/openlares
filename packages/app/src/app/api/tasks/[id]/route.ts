@@ -25,6 +25,7 @@ function serializeTask(raw: {
   status: 'pending' | 'executing' | 'completed' | 'failed';
   sessionKey: string | null;
   assignedAgent: string | null;
+  result: string | null;
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;

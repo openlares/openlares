@@ -39,6 +39,10 @@ export interface GatewayClientOptions {
   token: string;
   /** Request timeout in ms (default 10 000). */
   requestTimeoutMs?: number;
+  /** Origin header for server-side WebSocket connections. */
+  origin?: string;
+  /** Pre-loaded device identity for server-side connections (avoids localStorage). */
+  serverDeviceIdentity?: DeviceIdentity;
 }
 
 /** Handler for gateway events. */
@@ -97,6 +101,7 @@ export class GatewayClient {
   private readonly url: string;
   private readonly token: string;
   private readonly requestTimeoutMs: number;
+  private readonly origin?: string;
 
   private ws: WebSocket | null = null;
   private _status: ConnectionStatus = 'disconnected';
@@ -110,7 +115,6 @@ export class GatewayClient {
   private shouldReconnect = false;
 
   // Handshake state
-  // Handshake state
   private connectNonce: string | undefined;
 
   // Device identity for gateway auth
@@ -123,6 +127,10 @@ export class GatewayClient {
     this.url = options.url;
     this.token = options.token;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.origin = options.origin;
+    if (options.serverDeviceIdentity) {
+      this.deviceIdentity = options.serverDeviceIdentity;
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -218,15 +226,30 @@ export class GatewayClient {
   // Internals — connection
   // -----------------------------------------------------------------------
 
-  private doConnect(): Promise<HelloOkPayload> {
+  private async doConnect(): Promise<HelloOkPayload> {
     this.setStatus('connecting');
+
+    // Pre-load ws module outside the Promise executor if needed for server-side origin.
+    let WsConstructor: (new (url: string, opts?: object) => WebSocket) | undefined;
+    if (this.origin) {
+      const wsModule = await import('ws');
+      WsConstructor = wsModule.default as unknown as typeof WsConstructor;
+    }
 
     return new Promise<HelloOkPayload>((resolve, reject) => {
       this.connectResolve = resolve;
       this.connectReject = reject;
 
       try {
-        const ws = new WebSocket(this.url);
+        let ws: WebSocket;
+        if (this.origin && WsConstructor) {
+          ws = new WsConstructor(this.url, {
+            headers: { Origin: this.origin },
+            rejectUnauthorized: false,
+          }) as unknown as WebSocket;
+        } else {
+          ws = new WebSocket(this.url);
+        }
         this.ws = ws;
 
         ws.addEventListener('message', this.handleMessage);

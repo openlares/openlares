@@ -15,6 +15,8 @@ import {
   moveTask,
   getTask,
   listTransitions,
+  addComment,
+  listComments,
   type OpenlareDb,
 } from '@openlares/db';
 
@@ -39,13 +41,18 @@ interface GatewayConfig {
 // Singleton state
 // ---------------------------------------------------------------------------
 
-const state: ExecutorState = {
-  running: false,
-  currentTaskId: null,
-  currentSessionKey: null,
-  pollTimer: null,
-  monitorTimer: null,
-};
+// Persist state across HMR in dev mode
+const g = globalThis as unknown as { __executorState?: ExecutorState };
+if (!g.__executorState) {
+  g.__executorState = {
+    running: false,
+    currentTaskId: null,
+    currentSessionKey: null,
+    pollTimer: null,
+    monitorTimer: null,
+  };
+}
+const state = g.__executorState;
 
 const POLL_INTERVAL_MS = 5_000;
 const MONITOR_INTERVAL_MS = 3_000;
@@ -56,6 +63,7 @@ const AGENT_ID = 'main';
 // ---------------------------------------------------------------------------
 
 import { GatewayClient } from '@openlares/api-client';
+import { getServerDeviceIdentity } from '@openlares/api-client/server-identity';
 
 let gatewayConfig: GatewayConfig | null = null;
 let gatewayClient: GatewayClient | null = null;
@@ -86,9 +94,12 @@ async function ensureGatewayConnected(): Promise<GatewayClient> {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   }
 
+  const serverIdentity = await getServerDeviceIdentity();
   const client = new GatewayClient({
     url: gatewayConfig.url,
     token: gatewayConfig.token,
+    origin: 'https://localhost:3000',
+    serverDeviceIdentity: serverIdentity,
   });
 
   await client.connect();
@@ -181,9 +192,11 @@ async function dispatchTask(
   dashboardId: string,
 ): Promise<void> {
   try {
-    const prompt = buildPrompt(task);
+    const comments = listComments(db, task.id);
+    const prompt = buildPrompt(task, comments);
 
     await gatewayRpc('chat.send', {
+      idempotencyKey: crypto.randomUUID(),
       sessionKey,
       message: prompt,
     });
@@ -199,10 +212,20 @@ async function dispatchTask(
   }
 }
 
-function buildPrompt(task: { title: string; description: string | null }): string {
+function buildPrompt(
+  task: { title: string; description: string | null },
+  comments: Array<{ author: string; authorType: string; content: string }> = [],
+): string {
   let prompt = `# Task: ${task.title}\n\n`;
   if (task.description) {
     prompt += `${task.description}\n\n`;
+  }
+  if (comments.length > 0) {
+    prompt += `## Previous conversation:\n`;
+    for (const c of comments) {
+      const label = c.authorType === 'agent' ? `[agent]` : `[human]`;
+      prompt += `${label}: ${c.content}\n\n`;
+    }
   }
   prompt += `When you have completed this task, your last message should clearly state "TASK COMPLETE" or explain what went wrong.`;
   return prompt;
@@ -247,6 +270,18 @@ async function checkSessionCompletion(
           : JSON.stringify(lastAssistant.content);
 
       if (content.includes('TASK COMPLETE')) {
+        // Extract readable text from the assistant's response
+        let resultText: string | null = null;
+        if (typeof lastAssistant.content === 'string') {
+          resultText = lastAssistant.content.replace(/TASK COMPLETE/gi, '').trim() || null;
+        } else if (Array.isArray(lastAssistant.content)) {
+          const textParts = (lastAssistant.content as Array<{ type: string; text?: string }>)
+            .filter((c) => c.type === 'text' && c.text)
+            .map((c) => c.text!.replace(/TASK COMPLETE/gi, '').trim())
+            .filter(Boolean);
+          resultText = textParts.join('\n\n') || null;
+        }
+
         // Task completed — try to auto-transition to next queue
         const task = getTask(db, taskId);
         if (task) {
@@ -261,7 +296,7 @@ async function checkSessionCompletion(
             moveTask(db, taskId, nextTransition.toQueueId, AGENT_ID, 'Auto-completed by agent');
             emit({ type: 'task:moved', taskId, timestamp: Date.now() });
           }
-          completeTask(db, taskId);
+          completeTask(db, taskId, resultText ?? undefined);
           emit({ type: 'task:completed', taskId, timestamp: Date.now() });
         }
 

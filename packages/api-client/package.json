@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./server-identity": {
+      "types": "./src/server-identity.ts",
+      "default": "./src/server-identity.ts"
     }
   },
   "scripts": {
@@ -18,6 +22,7 @@
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "@openlares/core": "workspace:*",
+    "ws": "^8.19.0",
     "zustand": "^5.0.0"
   },
   "peerDependencies": {
@@ -25,6 +30,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
+    "@types/ws": "^8.18.1",
     "react": "^19.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

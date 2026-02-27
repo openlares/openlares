@@ -73,6 +73,7 @@ function ensureTables(sqlite: Database.Database): void {
       queue_id TEXT NOT NULL REFERENCES queues(id),
       title TEXT NOT NULL,
       description TEXT,
+      result TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'executing', 'completed', 'failed')),
       session_key TEXT,
@@ -80,6 +81,15 @@ function ensureTables(sqlite: Database.Database): void {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       completed_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS task_comments (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      author TEXT NOT NULL,
+      author_type TEXT NOT NULL CHECK(author_type IN ('human', 'agent')),
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS attachments (
@@ -106,6 +116,7 @@ function ensureTables(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_dashboard ON tasks(dashboard_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_task_history_task ON task_history(task_id);
+    CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id);
     CREATE INDEX IF NOT EXISTS idx_attachments_task ON attachments(task_id);
     CREATE INDEX IF NOT EXISTS idx_queues_dashboard ON queues(dashboard_id);
   `);

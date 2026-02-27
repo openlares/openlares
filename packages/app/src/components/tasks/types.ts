@@ -42,7 +42,17 @@ export interface Task {
   assignedAgent: string | null;
   createdAt: number;
   updatedAt: number;
+  result: string | null;
   completedAt: number | null;
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  author: string;
+  authorType: 'human' | 'agent';
+  content: string;
+  createdAt: number;
 }
 
 export interface TaskHistory {

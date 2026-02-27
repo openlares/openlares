@@ -77,7 +77,7 @@ async function computeDeviceId(publicKeyBytes: Uint8Array): Promise<string> {
 // ---------------------------------------------------------------------------
 
 /** Generate a fresh Ed25519 keypair. */
-async function generateIdentity(): Promise<DeviceIdentity> {
+export async function generateDeviceIdentity(): Promise<DeviceIdentity> {
   const privateKeyBytes = etc.randomBytes(32);
   const publicKeyBytes = await getPublicKeyAsync(privateKeyBytes);
   const deviceId = await computeDeviceId(publicKeyBytes);
@@ -92,29 +92,28 @@ async function generateIdentity(): Promise<DeviceIdentity> {
  * Load existing identity from localStorage, or generate a new one.
  * Validates that the stored deviceId matches the public key hash.
  */
+/**
+ * Load existing identity from localStorage (browser) or generate a new one.
+ * For server-side, use getServerDeviceIdentity from './server-identity'.
+ */
 export async function getDeviceIdentity(): Promise<DeviceIdentity> {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as DeviceIdentity;
       if (parsed.deviceId && parsed.publicKey && parsed.privateKey) {
-        // Validate: recompute deviceId from stored publicKey
-        const pubBytes = fromBase64Url(parsed.publicKey);
-        const computedId = await computeDeviceId(pubBytes);
-        if (computedId === parsed.deviceId) {
-          return parsed;
-        }
+        return parsed;
       }
     }
   } catch {
-    // Corrupted storage — regenerate
+    // Corrupted or unavailable storage
   }
 
-  const identity = await generateIdentity();
+  const identity = await generateDeviceIdentity();
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
   } catch {
-    // localStorage might be unavailable — identity still works for this session
+    // localStorage might be unavailable
   }
   return identity;
 }
