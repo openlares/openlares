@@ -644,25 +644,7 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
       stopToolPoll(sessionKey);
       return;
     }
-    // Safety: if active for > 90s without lifecycle end, assume session finished.
-    // Passive sessions often don't receive lifecycle end events.
     const staleCutoff = 90 * 1000;
-    if (activity.startedAt > 0 && Date.now() - activity.startedAt > staleCutoff) {
-      // Mark as ended — lifecycle end was probably missed
-      set((state) => ({
-        sessionActivities: {
-          ...state.sessionActivities,
-          [sessionKey]: {
-            ...state.sessionActivities[sessionKey],
-            active: false,
-            startedAt: state.sessionActivities[sessionKey]?.startedAt ?? 0,
-            endedAt: Date.now(),
-          },
-        },
-      }));
-      stopToolPoll(sessionKey);
-      return;
-    }
 
     try {
       const result = (await client.request('chat.history', {
@@ -681,7 +663,53 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
         const prevKey = lastSeenPollKey.get(sessionKey);
         if (msgKey) lastSeenPollKey.set(sessionKey, msgKey);
         // Nothing changed since last poll (skip only if we have a baseline)
-        if (prevKey && msgKey === prevKey) return;
+        if (prevKey && msgKey === prevKey) {
+          // No new messages. If the stale cutoff is reached, verify completion
+          // before ending — the session may still be running a long tool call.
+          const currentStartedAt = gatewayStore.getState().sessionActivities[sessionKey]?.startedAt ?? 0;
+          if (currentStartedAt > 0 && Date.now() - currentStartedAt > staleCutoff) {
+            const lastMsgCheck = result.messages[result.messages.length - 1] as
+              | Record<string, unknown>
+              | undefined;
+            const sessionEnded =
+              lastMsgCheck?.role === 'assistant' &&
+              (Array.isArray(lastMsgCheck.content)
+                ? (lastMsgCheck.content as { type?: string }[]).every((b) => b.type === 'text')
+                : true);
+            if (sessionEnded) {
+              // Final text response detected — mark as properly ended
+              set((state) => ({
+                sessionActivities: {
+                  ...state.sessionActivities,
+                  [sessionKey]: {
+                    active: false,
+                    startedAt: state.sessionActivities[sessionKey]?.startedAt ?? 0,
+                    endedAt: Date.now(),
+                    toolName: state.sessionActivities[sessionKey]?.toolName,
+                    toolTs: state.sessionActivities[sessionKey]?.toolTs,
+                  },
+                },
+              }));
+              stopToolPoll(sessionKey);
+            } else {
+              // Still running (no final text) — refresh startedAt to keep the
+              // ring alive for another staleCutoff window.
+              set((state) => ({
+                sessionActivities: {
+                  ...state.sessionActivities,
+                  [sessionKey]: {
+                    active: state.sessionActivities[sessionKey]?.active ?? true,
+                    startedAt: Date.now(),
+                    endedAt: state.sessionActivities[sessionKey]?.endedAt ?? 0,
+                    toolName: state.sessionActivities[sessionKey]?.toolName,
+                    toolTs: state.sessionActivities[sessionKey]?.toolTs,
+                  },
+                },
+              }));
+            }
+          }
+          return;
+        }
 
         // New messages detected — refresh the stale timer so long-running
         // sessions aren't killed while still actively producing output.
