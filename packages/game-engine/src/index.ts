@@ -12,6 +12,7 @@ export {
   getDisplayName,
   getFullName,
   getSessionColor,
+  getSessionIcon,
   getRecencyOpacity,
   isWithinActiveWindow,
   shouldShowActivity,

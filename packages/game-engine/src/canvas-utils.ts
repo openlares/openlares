@@ -347,6 +347,37 @@ export function getSessionColor(sessionKey: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// Session icons
+// ---------------------------------------------------------------------------
+
+/**
+ * A curated set of geometric Unicode symbols that render reliably across
+ * platforms and look good at small sizes inside a PixiJS circle avatar.
+ */
+const SESSION_ICONS = [
+  '■', // BLACK SQUARE ■
+  '▲', // BLACK UP-POINTING TRIANGLE ▲
+  '◆', // BLACK DIAMOND ◆
+  '★', // BLACK STAR ★
+  '♥', // BLACK HEART SUIT ♥
+  '♦', // BLACK DIAMOND SUIT ♦
+  '♣', // BLACK CLUB SUIT ♣
+  '♠', // BLACK SPADE SUIT ♠
+  '✚', // HEAVY GREEK CROSS ✚
+  '✖', // HEAVY MULTIPLICATION X ✖
+  '◐', // CIRCLE WITH LEFT HALF BLACK ◐
+  '◑', // CIRCLE WITH RIGHT HALF BLACK ◑
+] as const;
+
+/**
+ * Return a deterministic icon symbol for a session based on its key hash.
+ * Same key always returns the same icon; different keys spread across the set.
+ */
+export function getSessionIcon(sessionKey: string): string {
+  return SESSION_ICONS[hashCode(sessionKey) % SESSION_ICONS.length]!;
+}
+
+// ---------------------------------------------------------------------------
 // Activity window & opacity
 // ---------------------------------------------------------------------------
 

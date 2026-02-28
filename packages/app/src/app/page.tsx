@@ -20,7 +20,7 @@ export default function Home() {
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-[#0a0a1a]">
       {connectionStatus === 'disconnected' && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-gray-500">
           <p className="text-lg">Not connected to a gateway</p>
