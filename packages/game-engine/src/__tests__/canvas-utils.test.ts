@@ -551,9 +551,7 @@ describe('getSessionIcon', () => {
 
   it('returns different icons for different keys (spread test)', () => {
     // 12-icon palette × multiple keys should produce variance
-    const icons = new Set(
-      Array.from({ length: 24 }, (_, i) => getSessionIcon(`session-${i}`)),
-    );
+    const icons = new Set(Array.from({ length: 24 }, (_, i) => getSessionIcon(`session-${i}`)));
     expect(icons.size).toBeGreaterThan(1);
   });
 
