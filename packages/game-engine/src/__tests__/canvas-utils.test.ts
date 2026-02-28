@@ -5,6 +5,7 @@ import {
   shouldShowActivity,
   toolIcon,
   isToolBadgeFresh,
+  getSessionIcon,
   TOOL_BADGE_TTL_MS,
   ACTIVITY_LINGER_MS,
   friendlyName,
@@ -535,5 +536,30 @@ describe('isToolBadgeFresh', () => {
 
   it('returns true at exactly TTL boundary', () => {
     expect(isToolBadgeFresh(Date.now() - TOOL_BADGE_TTL_MS + 100)).toBe(true);
+  });
+});
+
+describe('getSessionIcon', () => {
+  it('returns a non-empty string', () => {
+    expect(getSessionIcon('test-session-key')).toBeTruthy();
+  });
+
+  it('is deterministic for the same key', () => {
+    const key = 'my-session-abc123';
+    expect(getSessionIcon(key)).toBe(getSessionIcon(key));
+  });
+
+  it('returns different icons for different keys (spread test)', () => {
+    // 12-icon palette × multiple keys should produce variance
+    const icons = new Set(
+      Array.from({ length: 24 }, (_, i) => getSessionIcon(`session-${i}`)),
+    );
+    expect(icons.size).toBeGreaterThan(1);
+  });
+
+  it('returns a single character', () => {
+    // Each icon is exactly one Unicode code point
+    const icon = getSessionIcon('some-key');
+    expect([...icon].length).toBe(1);
   });
 });

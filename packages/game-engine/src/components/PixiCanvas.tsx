@@ -8,6 +8,7 @@ import {
   getDisplayName,
   getFullName,
   getSessionColor,
+  getSessionIcon,
   getRecencyOpacity,
   isWithinActiveWindow,
   shouldShowActivity,
@@ -192,6 +193,22 @@ export function PixiCanvas({
         circle.fill({ color, alpha: opacity });
       }
       avatarContainer.addChild(circle);
+
+      // ---- Icon inside circle (deterministic from session key hash) ----
+      const icon = getSessionIcon(session.sessionKey);
+      const iconGlyph = new Text({
+        text: icon,
+        style: {
+          fontSize: 16,
+          fill: 0xffffff,
+          fontFamily: 'Arial, sans-serif',
+          align: 'center',
+        },
+      });
+      iconGlyph.alpha = Math.max(0.6, opacity);
+      iconGlyph.x = -iconGlyph.width / 2;
+      iconGlyph.y = -iconGlyph.height / 2;
+      avatarContainer.addChild(iconGlyph);
 
       // ---- Label (above the circle) ----
       const text = new Text({
