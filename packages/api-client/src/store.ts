@@ -666,7 +666,8 @@ function startToolPoll(sessionKey: string, client: GatewayClient, set: StoreSett
         if (prevKey && msgKey === prevKey) {
           // No new messages. If the stale cutoff is reached, verify completion
           // before ending — the session may still be running a long tool call.
-          const currentStartedAt = gatewayStore.getState().sessionActivities[sessionKey]?.startedAt ?? 0;
+          const currentStartedAt =
+            gatewayStore.getState().sessionActivities[sessionKey]?.startedAt ?? 0;
           if (currentStartedAt > 0 && Date.now() - currentStartedAt > staleCutoff) {
             const lastMsgCheck = result.messages[result.messages.length - 1] as
               | Record<string, unknown>
