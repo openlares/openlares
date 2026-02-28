@@ -407,7 +407,7 @@ export function PixiCanvas({
   return (
     <div
       ref={containerRef}
-      className="h-full w-full"
+      className="h-full w-full bg-[#0a0a1a]"
       style={{ position: 'relative', overflow: 'hidden' }}
     >
       <div
