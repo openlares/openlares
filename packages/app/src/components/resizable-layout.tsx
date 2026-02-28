@@ -13,9 +13,9 @@ export function ResizableLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <Group orientation="horizontal" className="flex-1 min-h-0">
+    <Group orientation="horizontal" className="flex-1 min-h-0 bg-[#0a0a1a]">
       <Panel defaultSize="70%" minSize="40%">
-        <main className="h-full overflow-hidden">{children}</main>
+        <main className="h-full overflow-hidden bg-[#0a0a1a]">{children}</main>
       </Panel>
       <ConditionalChatPanel />
     </Group>

@@ -36,7 +36,16 @@ export interface ChatProps {
 const MAX_DISPLAY_LENGTH = 2000;
 
 /** Truncation suffix shown when a message is cut. */
-const TRUNCATION_NOTICE = '\n\n… (message truncated)';
+const TRUNCATION_NOTICE = '\n\n\u2026 (message truncated)';
+
+/** Default max height for the textarea (px). User can drag to resize. */
+const DEFAULT_TEXTAREA_MAX_HEIGHT = 120;
+
+/** Minimum textarea height (px). */
+const MIN_TEXTAREA_HEIGHT = 36;
+
+/** Maximum textarea height (px). */
+const MAX_TEXTAREA_HEIGHT = 300;
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -64,8 +73,6 @@ function TypingIndicator() {
   );
 }
 
-// stripMetadataEnvelope imported from @openlares/api-client
-
 /**
  * Safely extract displayable text from message content.
  */
@@ -89,7 +96,6 @@ function MessageItem({ message }: { message: ChatMessage }) {
   const rawContent = renderContent(message.content);
   const strippedContent = isUser ? stripMetadataEnvelope(rawContent) : rawContent;
 
-  // Truncate very long messages to prevent browser freeze
   const displayContent =
     strippedContent.length > MAX_DISPLAY_LENGTH
       ? strippedContent.slice(0, MAX_DISPLAY_LENGTH) + TRUNCATION_NOTICE
@@ -165,7 +171,7 @@ function MessageItem({ message }: { message: ChatMessage }) {
 function LoadingMoreIndicator() {
   return (
     <div className="flex items-center justify-center py-3">
-      <span className="text-xs text-gray-500">Loading older messages…</span>
+      <span className="text-xs text-gray-500">Loading older messages\u2026</span>
     </div>
   );
 }
@@ -174,13 +180,6 @@ function LoadingMoreIndicator() {
 // Main component
 // ---------------------------------------------------------------------------
 
-/**
- * Chat — conversational message interface with streaming support.
- *
- * Uses react-virtuoso for reliable scroll behavior with `followOutput`
- * (auto-scroll to new messages). The parent must provide a definite
- * height (e.g. via flex layout).
- */
 export function Chat({
   messages,
   isStreaming,
@@ -194,6 +193,8 @@ export function Chat({
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const [textareaMaxHeight, setTextareaMaxHeight] = useState(DEFAULT_TEXTAREA_MAX_HEIGHT);
+  const dragStartRef = useRef<{ y: number; height: number } | null>(null);
 
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
@@ -202,14 +203,41 @@ export function Chat({
     });
   }, [messages.length]);
 
-  // Auto-resize textarea
+  // Auto-resize textarea up to textareaMaxHeight
   useEffect(() => {
     const el = textareaRef.current;
     if (el) {
       el.style.height = 'auto';
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+      el.style.height = `${Math.min(el.scrollHeight, textareaMaxHeight)}px`;
     }
-  }, [input]);
+  }, [input, textareaMaxHeight]);
+
+  // Drag-to-resize handle: dragging upward expands the textarea
+  const handleResizeDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const el = textareaRef.current;
+    if (!el) return;
+    dragStartRef.current = { y: e.clientY, height: el.offsetHeight };
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragStartRef.current) return;
+      const delta = dragStartRef.current.y - ev.clientY; // up = positive = expand
+      const newMax = Math.max(
+        MIN_TEXTAREA_HEIGHT,
+        Math.min(MAX_TEXTAREA_HEIGHT, dragStartRef.current.height + delta),
+      );
+      setTextareaMaxHeight(newMax);
+    };
+
+    const onUp = () => {
+      dragStartRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -239,7 +267,7 @@ export function Chat({
   return (
     <div className="flex h-full flex-col bg-gray-950">
       {/* Message area — Virtuoso handles scroll + auto-follow */}
-      <div className="flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0">
         {messages.length === 0 && !isStreaming ? (
           <div className="flex h-full items-center justify-center text-sm text-gray-600">
             Send a message to start
@@ -274,32 +302,45 @@ export function Chat({
             }}
           />
         )}
+
+        {/* Scroll-to-latest button — absolutely positioned, no layout shift */}
+        {messages.length > 0 && (
+          <div
+            className={`pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 z-10 transition-opacity duration-150 ${
+              atBottom ? 'opacity-0' : 'opacity-100 pointer-events-auto'
+            }`}
+          >
+            <button
+              onClick={scrollToBottom}
+              className="rounded-full bg-gray-800/90 border border-gray-700 px-2.5 py-0.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors shadow-md backdrop-blur-sm"
+            >
+              \u2193 Latest
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Scroll to latest button */}
-      {!atBottom && messages.length > 0 && (
-        <div className="flex justify-center py-1">
-          <button
-            onClick={scrollToBottom}
-            className="rounded-full bg-gray-800 border border-gray-700 px-3 py-1 text-xs text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors shadow-lg"
-          >
-            ↓ Latest
-          </button>
-        </div>
-      )}
-
       {/* Input bar — pinned to bottom */}
-      <div className="shrink-0 border-t border-gray-800 bg-gray-900 p-3">
-        <div className="flex gap-2">
+      <div className="shrink-0 border-t border-gray-800 bg-gray-900">
+        {/* Resize handle — drag up to expand textarea */}
+        <div
+          onMouseDown={handleResizeDragStart}
+          className="group flex w-full cursor-row-resize items-center justify-center py-1"
+          title="Drag to resize"
+        >
+          <div className="h-px w-8 rounded bg-gray-700 transition-colors group-hover:bg-amber-500/60" />
+        </div>
+
+        <div className="flex gap-2 px-3 pb-3">
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message…"
+            placeholder="Type a message\u2026"
             disabled={isStreaming}
             rows={1}
-            className="flex-1 resize-none rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50"
+            className="flex-1 resize-none overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           />
           <button
             onClick={handleSend}
