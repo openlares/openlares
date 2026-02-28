@@ -203,6 +203,15 @@ export function Chat({
     });
   }, [messages.length]);
 
+  // Auto-scroll during streaming: Virtuoso's followOutput only fires on new list items,
+  // not on content updates of existing items. This effect handles streaming deltas.
+  const lastMessageContent =
+    messages.length > 0 ? messages[messages.length - 1]?.content : undefined;
+  useEffect(() => {
+    if (!isStreaming || !atBottom || messages.length === 0) return;
+    virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, behavior: 'auto' });
+  }, [lastMessageContent, isStreaming, atBottom, messages.length]);
+
   // Auto-resize textarea up to textareaMaxHeight
   useEffect(() => {
     const el = textareaRef.current;
