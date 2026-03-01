@@ -1,8 +1,20 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Dashboard, Queue, Transition } from './types';
 import { useToastStore } from '@/lib/toast-store';
+
+interface QueueTemplate {
+  id: string;
+  name: string;
+  queuesJson: Array<{
+    name: string;
+    ownerType: 'human' | 'assistant';
+    description?: string;
+    agentLimit?: number;
+  }> | null;
+  createdAt: number;
+}
 
 interface ProjectConfigProps {
   dashboard: Dashboard;
@@ -47,7 +59,48 @@ export function ProjectConfig({
   const [renameValue, setRenameValue] = useState(projectName);
   const [renaming, setRenaming] = useState(false);
 
+  // Agent assignment
+  const [assignedAgents, setAssignedAgents] = useState<string[]>([]);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [newAgentInput, setNewAgentInput] = useState('');
+
+  // Project system prompt
+  const [projectSystemPrompt, setProjectSystemPrompt] = useState(dashboard.systemPrompt ?? '');
+
+  // Per-queue system prompts
+  const [expandedSystemPromptId, setExpandedSystemPromptId] = useState<string | null>(null);
+  const [queueSystemPromptValues, setQueueSystemPromptValues] = useState<Record<string, string>>(
+    {},
+  );
+
+  // Queue templates
+  const [templates, setTemplates] = useState<QueueTemplate[]>([]);
+  const [showTemplateSave, setShowTemplateSave] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
+
   const addToast = useToastStore((s) => s.addToast);
+
+  // Load agents and templates on mount
+  useEffect(() => {
+    fetch(`/api/projects/${projectId}/agents`)
+      .then((r) => r.json())
+      .then((agents: string[]) => {
+        setAssignedAgents(agents);
+        setAgentsLoaded(true);
+      })
+      .catch(() => setAgentsLoaded(true));
+
+    fetch('/api/queue-templates')
+      .then((r) => r.json())
+      .then((tmpl: QueueTemplate[]) => {
+        setTemplates(tmpl);
+      })
+      .catch(() => {
+        // silently ignore
+      });
+  }, [projectId]);
 
   /** Refetch queues + transitions from API. */
   const refetch = useCallback(async () => {
@@ -79,12 +132,164 @@ export function ProjectConfig({
         setRenameValue(projectName);
       }
     } catch {
-      addToast('error', 'Network error — check your connection');
+      addToast('error', 'Network error \u2014 check your connection');
       setRenameValue(projectName);
     } finally {
       setRenaming(false);
     }
   }, [renameValue, projectName, projectId, onRenameProject, addToast]);
+
+  // Agent assignment handlers
+  const handleAddAgent = useCallback(async () => {
+    const agentId = newAgentInput.trim();
+    if (!agentId) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/agents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId }),
+      });
+      if (res.ok) {
+        setAssignedAgents((prev) => (prev.includes(agentId) ? prev : [...prev, agentId]));
+        setNewAgentInput('');
+      } else {
+        const errData = (await res.json()) as { error?: string };
+        addToast('error', errData.error ?? 'Failed to assign agent');
+      }
+    } catch {
+      addToast('error', 'Network error \u2014 check your connection');
+    }
+  }, [newAgentInput, projectId, addToast]);
+
+  const handleRemoveAgent = useCallback(
+    async (agentId: string) => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/agents`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId }),
+        });
+        if (res.ok) {
+          setAssignedAgents((prev) => prev.filter((a) => a !== agentId));
+        } else {
+          const errData = (await res.json()) as { error?: string };
+          addToast('error', errData.error ?? 'Failed to remove agent');
+        }
+      } catch {
+        addToast('error', 'Network error \u2014 check your connection');
+      }
+    },
+    [projectId, addToast],
+  );
+
+  // Project system prompt
+  const handleSaveProjectSystemPrompt = useCallback(async () => {
+    const prompt = projectSystemPrompt.trim() || null;
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemPrompt: prompt }),
+      });
+      if (!res.ok) {
+        const errData = (await res.json()) as { error?: string };
+        addToast('error', errData.error ?? 'Failed to save system prompt');
+      }
+    } catch {
+      addToast('error', 'Network error \u2014 check your connection');
+    }
+  }, [projectSystemPrompt, projectId, addToast]);
+
+  // Per-queue system prompt
+  const handleToggleQueueSystemPrompt = useCallback(
+    (queue: Queue) => {
+      const isExpanding = expandedSystemPromptId !== queue.id;
+      setExpandedSystemPromptId(isExpanding ? queue.id : null);
+      if (isExpanding && queueSystemPromptValues[queue.id] === undefined) {
+        setQueueSystemPromptValues((prev) => ({
+          ...prev,
+          [queue.id]: queue.systemPrompt ?? '',
+        }));
+      }
+    },
+    [expandedSystemPromptId, queueSystemPromptValues],
+  );
+
+  const handleSaveQueueSystemPrompt = useCallback(
+    async (queueId: string) => {
+      const systemPrompt = (queueSystemPromptValues[queueId] ?? '').trim() || null;
+      setQueues((prev) => prev.map((q) => (q.id === queueId ? { ...q, systemPrompt } : q)));
+      try {
+        const res = await fetch(`/api/queues/${queueId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ systemPrompt }),
+        });
+        if (!res.ok) {
+          const errData = (await res.json()) as { error?: string };
+          addToast('error', errData.error ?? 'Failed to save system prompt');
+          await refetch();
+        }
+      } catch {
+        addToast('error', 'Network error \u2014 check your connection');
+        await refetch();
+      }
+    },
+    [queueSystemPromptValues, refetch, addToast],
+  );
+
+  // Queue templates
+  const handleSaveTemplate = useCallback(async () => {
+    const name = templateName.trim();
+    if (!name) return;
+    setSavingTemplate(true);
+    try {
+      const sortedQ = [...queues].sort((a, b) => a.position - b.position);
+      const entries = sortedQ.map((q) => ({
+        name: q.name,
+        ownerType: q.ownerType,
+        description: q.description ?? undefined,
+        agentLimit: q.agentLimit,
+      }));
+      const res = await fetch('/api/queue-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, entries }),
+      });
+      if (res.ok) {
+        const created = (await res.json()) as QueueTemplate;
+        setTemplates((prev) => [...prev, created]);
+        setTemplateName('');
+        setShowTemplateSave(false);
+        addToast('success', 'Template saved');
+      } else {
+        const errData = (await res.json()) as { error?: string };
+        addToast('error', errData.error ?? 'Failed to save template');
+      }
+    } catch {
+      addToast('error', 'Network error \u2014 check your connection');
+    } finally {
+      setSavingTemplate(false);
+    }
+  }, [templateName, queues, addToast]);
+
+  const handleDeleteTemplate = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/queue-templates/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          setTemplates((prev) => prev.filter((t) => t.id !== id));
+          setDeletingTemplateId(null);
+          addToast('success', 'Template deleted');
+        } else {
+          addToast('error', 'Failed to delete template');
+        }
+      } catch {
+        addToast('error', 'Network error \u2014 check your connection');
+      }
+    },
+    [addToast],
+  );
 
   // Add a new queue
   const handleAddQueue = useCallback(async () => {
@@ -111,7 +316,7 @@ export function ProjectConfig({
         addToast('error', errData.error ?? 'Failed to add queue');
       }
     } catch {
-      addToast('error', 'Network error — check your connection');
+      addToast('error', 'Network error \u2014 check your connection');
     }
   }, [
     dashboard.id,
@@ -136,7 +341,7 @@ export function ProjectConfig({
           addToast('error', errData.error ?? 'Failed to delete queue');
         }
       } catch {
-        addToast('error', 'Network error — check your connection');
+        addToast('error', 'Network error \u2014 check your connection');
       } finally {
         setDeletingQueueId(null);
       }
@@ -183,7 +388,7 @@ export function ProjectConfig({
           await refetch(); // Roll back optimistic update
         }
       } catch {
-        addToast('error', 'Network error — check your connection');
+        addToast('error', 'Network error \u2014 check your connection');
         await refetch();
       }
     },
@@ -216,7 +421,7 @@ export function ProjectConfig({
           await refetch();
         }
       } catch {
-        addToast('error', 'Network error — check your connection');
+        addToast('error', 'Network error \u2014 check your connection');
         await refetch();
       }
     },
@@ -239,7 +444,7 @@ export function ProjectConfig({
           addToast('error', errData.error ?? 'Failed to add transition');
         }
       } catch {
-        addToast('error', 'Network error — check your connection');
+        addToast('error', 'Network error \u2014 check your connection');
       }
     },
     [dashboard.id, refetch, addToast],
@@ -258,7 +463,7 @@ export function ProjectConfig({
           addToast('error', errData.error ?? 'Failed to delete transition');
         }
       } catch {
-        addToast('error', 'Network error — check your connection');
+        addToast('error', 'Network error \u2014 check your connection');
       } finally {
         setDeletingTransitionId(null);
       }
@@ -283,7 +488,7 @@ export function ProjectConfig({
           setStrictTransitions(!enabled); // revert
         }
       } catch {
-        addToast('error', 'Network error — check your connection');
+        addToast('error', 'Network error \u2014 check your connection');
         setStrictTransitions(!enabled); // revert
       }
     },
@@ -304,12 +509,11 @@ export function ProjectConfig({
         <div className="flex items-center justify-between border-b border-slate-700/50 px-5 py-3">
           <h3 className="text-lg font-semibold text-slate-100">Project Settings</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
-            ✕
+            \u2715
           </button>
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto p-5">
-          {/* Queues */}
           {/* Project name */}
           <div className="mb-5">
             <label className="mb-1 block text-xs text-slate-400">Project name</label>
@@ -327,11 +531,73 @@ export function ProjectConfig({
                 disabled={renaming || !renameValue.trim() || renameValue.trim() === projectName}
                 className="rounded-lg bg-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-600 disabled:opacity-50"
               >
-                {renaming ? 'Saving…' : 'Rename'}
+                {renaming ? 'Saving\u2026' : 'Rename'}
               </button>
             </div>
           </div>
 
+          {/* Agent Assignment */}
+          <div className="mb-5">
+            <h4 className="mb-2 text-sm font-semibold text-slate-200">Agents</h4>
+            {!agentsLoaded ? (
+              <p className="text-xs text-slate-500">Loading\u2026</p>
+            ) : assignedAgents.length === 0 ? (
+              <p className="mb-2 text-xs text-slate-400">Any agent can work on this project.</p>
+            ) : (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {assignedAgents.map((agentId) => (
+                  <span
+                    key={agentId}
+                    className="flex items-center gap-1 rounded-full bg-slate-700 px-2 py-1 text-xs text-slate-300"
+                  >
+                    {agentId}
+                    <button
+                      onClick={() => void handleRemoveAgent(agentId)}
+                      className="ml-0.5 text-slate-500 hover:text-red-400"
+                      title={`Remove ${agentId}`}
+                    >
+                      \u2715
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={newAgentInput}
+                onChange={(e) => setNewAgentInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleAddAgent();
+                }}
+                placeholder="Agent ID (e.g. main, ops)"
+                className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+              />
+              <button
+                onClick={() => void handleAddAgent()}
+                disabled={!newAgentInput.trim()}
+                className="rounded-lg bg-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-600 disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Project system prompt */}
+          <div className="mb-5">
+            <label className="mb-1 block text-xs text-slate-400">
+              Project system prompt \u2014 injected for all tasks in this project
+            </label>
+            <textarea
+              value={projectSystemPrompt}
+              onChange={(e) => setProjectSystemPrompt(e.target.value)}
+              onBlur={() => void handleSaveProjectSystemPrompt()}
+              rows={3}
+              placeholder="Instructions injected into every task in this project\u2026"
+              className="w-full resize-none rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+            />
+          </div>
+
+          {/* Queues */}
           <h4 className="mb-3 text-sm font-semibold text-slate-200">Queues (columns)</h4>
           <div className="mb-4 space-y-2">
             {sortedQueues.map((queue, idx) => (
@@ -346,7 +612,7 @@ export function ProjectConfig({
                       className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
                       title="Move up"
                     >
-                      ▲
+                      \u25b2
                     </button>
                     <button
                       onClick={() => void handleMoveQueue(idx, 'down')}
@@ -354,12 +620,17 @@ export function ProjectConfig({
                       className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
                       title="Move down"
                     >
-                      ▼
+                      \u25bc
                     </button>
                   </div>
 
                   <span className="w-6 text-center text-xs text-slate-500">{idx + 1}</span>
                   <span className="flex-1 text-sm text-slate-200">{queue.name}</span>
+                  {queue.systemPrompt && (
+                    <span title="Has system prompt" className="text-xs">
+                      💬
+                    </span>
+                  )}
                   <span
                     className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
                       queue.ownerType === 'human'
@@ -370,7 +641,7 @@ export function ProjectConfig({
                     {queue.ownerType === 'human' ? '👤 Human' : '🤖 Assistant'}
                   </span>
                   <span className="text-xs text-slate-500">
-                    limit: {queue.agentLimit === 0 ? '∞' : queue.agentLimit}
+                    limit: {queue.agentLimit === 0 ? '\u221e' : queue.agentLimit}
                   </span>
 
                   {/* Delete button with confirmation */}
@@ -416,7 +687,7 @@ export function ProjectConfig({
                           setEditingDescriptionValue('');
                         }
                       }}
-                      placeholder="Add a description…"
+                      placeholder="Add a description\u2026"
                       className="w-full rounded bg-slate-700/50 px-2 py-1 text-xs text-slate-300 placeholder-slate-600 outline-none ring-1 ring-cyan-400/50 focus:ring-cyan-400"
                     />
                   ) : (
@@ -431,13 +702,42 @@ export function ProjectConfig({
                         </span>
                       ) : (
                         <span className="text-xs text-slate-600 group-hover:text-slate-500">
-                          Add description…
+                          Add description\u2026
                         </span>
                       )}
                       <span className="text-[10px] text-slate-600 opacity-0 group-hover:opacity-100">
-                        ✎
+                        \u270e
                       </span>
                     </button>
+                  )}
+                </div>
+
+                {/* System prompt row */}
+                <div className="ml-[3.25rem] mt-1">
+                  <button
+                    onClick={() => handleToggleQueueSystemPrompt(queue)}
+                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-400"
+                  >
+                    <span>{expandedSystemPromptId === queue.id ? '\u25be' : '\u25b8'}</span>
+                    <span>System prompt</span>
+                    {queue.systemPrompt && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                    )}
+                  </button>
+                  {expandedSystemPromptId === queue.id && (
+                    <textarea
+                      value={queueSystemPromptValues[queue.id] ?? queue.systemPrompt ?? ''}
+                      onChange={(e) =>
+                        setQueueSystemPromptValues((prev) => ({
+                          ...prev,
+                          [queue.id]: e.target.value,
+                        }))
+                      }
+                      onBlur={() => void handleSaveQueueSystemPrompt(queue.id)}
+                      rows={3}
+                      placeholder="Instructions for this queue\u2026"
+                      className="mt-1 w-full resize-none rounded bg-slate-700/50 px-2 py-1 text-xs text-slate-300 placeholder-slate-600 outline-none ring-1 ring-cyan-400/50 focus:ring-cyan-400"
+                    />
                   )}
                 </div>
               </div>
@@ -484,7 +784,7 @@ export function ProjectConfig({
             <input
               value={newQueueDescription}
               onChange={(e) => setNewQueueDescription(e.target.value)}
-              placeholder="Description (optional)…"
+              placeholder="Description (optional)\u2026"
               className="w-full rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-400 placeholder-slate-600 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
             />
           </div>
@@ -496,7 +796,7 @@ export function ProjectConfig({
               <p className="text-xs text-slate-400">
                 {strictTransitions
                   ? 'Only defined transitions are allowed'
-                  : 'Free movement — tasks can move between any queues'}
+                  : 'Free movement \u2014 tasks can move between any queues'}
               </p>
             </div>
             <button
@@ -529,7 +829,7 @@ export function ProjectConfig({
                       className="flex items-center gap-2 rounded-lg bg-slate-700/30 px-3 py-2 text-sm"
                     >
                       <span className="text-slate-200">{from?.name ?? '?'}</span>
-                      <span className="text-slate-500">→</span>
+                      <span className="text-slate-500">\u2192</span>
                       <span className="text-slate-200">{to?.name ?? '?'}</span>
                       <span
                         className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium ${
@@ -588,6 +888,97 @@ export function ProjectConfig({
               )}
             </>
           )}
+
+          {/* Queue Templates */}
+          <div className="mt-6 border-t border-slate-700/50 pt-5">
+            <h4 className="mb-3 text-sm font-semibold text-slate-200">📋 Queue Templates</h4>
+
+            {/* Save as template */}
+            {showTemplateSave ? (
+              <div className="mb-3 flex gap-2">
+                <input
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleSaveTemplate();
+                    if (e.key === 'Escape') setShowTemplateSave(false);
+                  }}
+                  placeholder="Template name\u2026"
+                  autoFocus
+                  className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+                />
+                <button
+                  onClick={() => void handleSaveTemplate()}
+                  disabled={savingTemplate || !templateName.trim()}
+                  className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
+                >
+                  {savingTemplate ? 'Saving\u2026' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setShowTemplateSave(false)}
+                  className="rounded-lg bg-slate-700 px-3 py-2 text-sm text-slate-400 hover:bg-slate-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowTemplateSave(true)}
+                disabled={queues.length === 0}
+                className="mb-3 flex items-center gap-2 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+              >
+                <span>💾</span>
+                <span>Save current queues as template</span>
+              </button>
+            )}
+
+            {/* Saved templates list */}
+            {templates.length > 0 && (
+              <div className="space-y-1">
+                <p className="mb-1.5 text-xs text-slate-400">Saved templates:</p>
+                {templates.map((tpl) => (
+                  <div
+                    key={tpl.id}
+                    className="flex items-center gap-2 rounded-lg bg-slate-700/30 px-3 py-2"
+                  >
+                    <span className="flex-1 text-sm text-slate-200">{tpl.name}</span>
+                    <span className="text-xs text-slate-500">
+                      {tpl.queuesJson?.length ?? 0} queue
+                      {(tpl.queuesJson?.length ?? 0) !== 1 ? 's' : ''}
+                    </span>
+                    {deletingTemplateId === tpl.id ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-red-400">Delete?</span>
+                        <button
+                          onClick={() => void handleDeleteTemplate(tpl.id)}
+                          className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/40"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => setDeletingTemplateId(null)}
+                          className="rounded bg-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-500"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeletingTemplateId(tpl.id)}
+                        title="Delete template"
+                        className="text-slate-500 hover:text-red-400"
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {templates.length === 0 && (
+              <p className="text-xs text-slate-600">No templates saved yet.</p>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
@@ -641,7 +1032,7 @@ function TransitionAdder({
           ))}
         </select>
       </div>
-      <span className="pb-2 text-slate-500">→</span>
+      <span className="pb-2 text-slate-500">\u2192</span>
       <div>
         <label className="mb-1 block text-xs text-slate-400">To</label>
         <select
