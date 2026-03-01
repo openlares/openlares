@@ -16,7 +16,7 @@ export async function GET() {
 /**
  * POST /api/executor — start/stop the executor
  *
- * Body: { action: "start", dashboardId, gatewayUrl?, gatewayToken? }
+ * Body: { action: "start", projectId, gatewayUrl?, gatewayToken? }
  *       { action: "stop" }
  */
 export async function POST(request: Request) {
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   switch (body.action) {
     case 'start': {
-      if (!body.dashboardId) {
+      if (!body.projectId) {
         return NextResponse.json({ error: 'dashboardId is required' }, { status: 400 });
       }
 
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
         });
       }
 
-      startExecutor(String(body.dashboardId));
+      startExecutor(String(body.projectId));
       return NextResponse.json({ ok: true, ...getExecutorStatus() });
     }
 

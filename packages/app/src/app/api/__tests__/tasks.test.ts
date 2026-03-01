@@ -1,12 +1,5 @@
 import { vi, beforeEach, describe, it, expect } from 'vitest';
-import {
-  createDb,
-  seedDefaultDashboard,
-  listDashboards,
-  listQueues,
-  createTask,
-  setTaskError,
-} from '@openlares/db';
+import { createDb, seedDefaultProject, listQueues, createTask, setTaskError } from '@openlares/db';
 import type { OpenlareDb } from '@openlares/db';
 
 // --- DB mock ---
@@ -14,22 +7,22 @@ let testDb: OpenlareDb;
 vi.mock('@/lib/db', () => ({ getDb: () => testDb }));
 vi.mock('@/lib/task-events', () => ({ emit: vi.fn() }));
 
-import { GET as listTasksRoute, POST as createTaskRoute } from '../dashboards/[id]/tasks/route';
+import { GET as listTasksRoute, POST as createTaskRoute } from '../projects/[id]/tasks/route';
 import {
   GET as getTaskRoute,
   PATCH as patchTaskRoute,
   DELETE as deleteTaskRoute,
 } from '../tasks/[id]/route';
 
-let dashboardId: string;
+let projectId: string;
 let todoQueueId: string;
 let inProgressQueueId: string;
 
 beforeEach(() => {
   testDb = createDb(':memory:');
-  const dashboard = seedDefaultDashboard(testDb)!;
-  dashboardId = dashboard.id;
-  const queues = listQueues(testDb, dashboardId);
+  const dashboard = seedDefaultProject(testDb)!;
+  projectId = dashboard.id;
+  const queues = listQueues(testDb, projectId);
   todoQueueId = queues.find((q) => q.name === 'Todo')!.id;
   inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
 });
@@ -39,8 +32,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe('GET /api/dashboards/[id]/tasks', () => {
   it('returns an empty list when no tasks exist', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/tasks`);
-    const res = await listTasksRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/tasks`);
+    const res = await listTasksRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
@@ -48,9 +41,9 @@ describe('GET /api/dashboards/[id]/tasks', () => {
   });
 
   it('returns tasks after creating one', async () => {
-    createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Existing task' });
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/tasks`);
-    const res = await listTasksRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    createTask(testDb, { projectId, queueId: todoQueueId, title: 'Existing task' });
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/tasks`);
+    const res = await listTasksRoute(req, { params: Promise.resolve({ id: projectId }) });
     const data = await res.json();
     expect(data).toHaveLength(1);
     expect(data[0]).toHaveProperty('title', 'Existing task');
@@ -62,12 +55,12 @@ describe('GET /api/dashboards/[id]/tasks', () => {
 // ---------------------------------------------------------------------------
 describe('POST /api/dashboards/[id]/tasks', () => {
   it('creates a task with 201 status', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/tasks`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/tasks`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ queueId: todoQueueId, title: 'New task', priority: 5 }),
     });
-    const res = await createTaskRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createTaskRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(201);
     const data = await res.json();
     expect(data).toHaveProperty('title', 'New task');
@@ -76,22 +69,22 @@ describe('POST /api/dashboards/[id]/tasks', () => {
   });
 
   it('returns 400 when queueId is missing', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/tasks`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/tasks`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'No queue' }),
     });
-    const res = await createTaskRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createTaskRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when title is missing', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/tasks`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/tasks`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ queueId: todoQueueId }),
     });
-    const res = await createTaskRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createTaskRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(400);
   });
 });
@@ -101,7 +94,7 @@ describe('POST /api/dashboards/[id]/tasks', () => {
 // ---------------------------------------------------------------------------
 describe('GET /api/tasks/[id]', () => {
   it('returns a task with history', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'My task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'My task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}`);
     const res = await getTaskRoute(req, { params: Promise.resolve({ id: task.id }) });
     expect(res.status).toBe(200);
@@ -123,7 +116,7 @@ describe('GET /api/tasks/[id]', () => {
 // ---------------------------------------------------------------------------
 describe('PATCH /api/tasks/[id] action=update', () => {
   it('updates task title and priority', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Old title' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Old title' });
     const req = new Request(`http://localhost/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -152,7 +145,7 @@ describe('PATCH /api/tasks/[id] action=update', () => {
 // ---------------------------------------------------------------------------
 describe('PATCH /api/tasks/[id] action=move', () => {
   it('moves task to another queue', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Movable task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Movable task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -165,7 +158,7 @@ describe('PATCH /api/tasks/[id] action=move', () => {
   });
 
   it('returns 400 when toQueueId is missing', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -176,7 +169,7 @@ describe('PATCH /api/tasks/[id] action=move', () => {
   });
 
   it('returns 422 when moving to invalid queue', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -193,7 +186,7 @@ describe('PATCH /api/tasks/[id] action=move', () => {
 describe('PATCH /api/tasks/[id] action=claim', () => {
   it('claims a task for an agent', async () => {
     const task = createTask(testDb, {
-      dashboardId,
+      projectId,
       queueId: inProgressQueueId,
       title: 'Claimable',
     });
@@ -210,7 +203,7 @@ describe('PATCH /api/tasks/[id] action=claim', () => {
   });
 
   it('returns 400 when agentId is missing', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -226,7 +219,7 @@ describe('PATCH /api/tasks/[id] action=claim', () => {
 // ---------------------------------------------------------------------------
 describe('PATCH /api/tasks/[id] action=clear-error', () => {
   it('clears task error', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Errored task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Errored task' });
     setTaskError(testDb, task.id, 'Something went wrong');
 
     const req = new Request(`http://localhost/api/tasks/${task.id}`, {
@@ -256,7 +249,7 @@ describe('PATCH /api/tasks/[id] action=clear-error', () => {
 // ---------------------------------------------------------------------------
 describe('PATCH /api/tasks/[id] unknown action', () => {
   it('returns 400 for an unrecognized action', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -274,7 +267,7 @@ describe('PATCH /api/tasks/[id] unknown action', () => {
 // ---------------------------------------------------------------------------
 describe('DELETE /api/tasks/[id]', () => {
   it('deletes a task', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Doomed task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Doomed task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}`, { method: 'DELETE' });
     const res = await deleteTaskRoute(req, { params: Promise.resolve({ id: task.id }) });
     expect(res.status).toBe(200);

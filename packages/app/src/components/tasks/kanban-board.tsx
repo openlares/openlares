@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { QueueColumn } from './queue-column';
 import { TaskDetail } from './task-detail';
-import { DashboardConfig } from './dashboard-config';
+import { ProjectConfig } from './dashboard-config';
 import type { Dashboard, Queue, Task, Transition } from './types';
 import { loadGatewayConfig } from '@/lib/storage';
 import { useToastStore } from '@/lib/toast-store';
@@ -67,7 +67,7 @@ export function KanbanBoard({
   const fallbackPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshTasks = useCallback(() => {
-    fetch(`/api/dashboards/${dashboard.id}/tasks`)
+    fetch(`/api/projects/${dashboard.id}/tasks`)
       .then((res) => (res.ok ? (res.json() as Promise<Task[]>) : null))
       .then((freshTasks) => {
         if (freshTasks) setTasks(freshTasks);
@@ -189,7 +189,7 @@ export function KanbanBoard({
                 const gw = loadGatewayConfig();
                 return {
                   action: 'start',
-                  dashboardId: dashboard.id,
+                  projectId: dashboard.id,
                   ...(gw
                     ? {
                         gatewayUrl: gw.url,
@@ -287,7 +287,7 @@ export function KanbanBoard({
       if (!showAddModal || !newTitle.trim()) return;
 
       try {
-        const res = await fetch(`/api/dashboards/${dashboard.id}/tasks`, {
+        const res = await fetch(`/api/projects/${dashboard.id}/tasks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -446,7 +446,7 @@ export function KanbanBoard({
 
       {/* Dashboard config modal */}
       {showConfig && (
-        <DashboardConfig
+        <ProjectConfig
           dashboard={dashboard}
           queues={queues}
           transitions={transitions}

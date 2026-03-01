@@ -4,10 +4,19 @@
  * All mutations return the affected row(s). IDs are generated via randomUUID().
  */
 
-import { eq, and, asc, desc, isNull, isNotNull } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, isNotNull, count } from 'drizzle-orm';
 import type { OpenlareDb } from './client';
-import { dashboards, queues, transitions, tasks, taskHistory, taskComments } from './schema';
-import type { DashboardConfig, TransitionConditions } from './schema';
+import {
+  projects,
+  queues,
+  transitions,
+  tasks,
+  taskHistory,
+  taskComments,
+  projectAgents,
+  queueTemplates,
+} from './schema';
+import type { ProjectConfig, TransitionConditions, QueueTemplateEntry } from './schema';
 
 // ---------------------------------------------------------------------------
 // ID generation
@@ -22,50 +31,88 @@ function now(): Date {
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard operations
+// Project operations
 // ---------------------------------------------------------------------------
 
-export interface CreateDashboardInput {
+export interface CreateProjectInput {
   name: string;
-  config?: DashboardConfig;
+  config?: ProjectConfig;
+  systemPrompt?: string;
 }
 
-export function createDashboard(db: OpenlareDb, input: CreateDashboardInput) {
+export function createProject(db: OpenlareDb, input: CreateProjectInput) {
   const id = newId();
   const ts = now();
   return db
-    .insert(dashboards)
-    .values({ id, name: input.name, config: input.config ?? null, createdAt: ts, updatedAt: ts })
+    .insert(projects)
+    .values({
+      id,
+      name: input.name,
+      config: input.config ?? null,
+      systemPrompt: input.systemPrompt ?? null,
+      createdAt: ts,
+      updatedAt: ts,
+    })
     .returning()
     .get();
 }
 
-export function getDashboard(db: OpenlareDb, id: string) {
-  return db.select().from(dashboards).where(eq(dashboards.id, id)).get();
+export function getProject(db: OpenlareDb, id: string) {
+  return db.select().from(projects).where(eq(projects.id, id)).get();
 }
 
-export function updateDashboard(
+export interface UpdateProjectInput {
+  name?: string;
+  config?: ProjectConfig;
+  pinned?: boolean;
+  systemPrompt?: string | null;
+  lastAccessedAt?: Date;
+}
+
+export function updateProject(
   db: OpenlareDb,
   id: string,
-  data: { name?: string; config?: DashboardConfig },
-) {
-  const existing = getDashboard(db, id);
+  data: UpdateProjectInput,
+): typeof projects.$inferSelect | null {
+  const existing = getProject(db, id);
   if (!existing) return null;
 
-  db.update(dashboards)
-    .set({
-      ...(data.name !== undefined ? { name: data.name } : {}),
-      ...(data.config !== undefined ? { config: data.config } : {}),
-      updatedAt: now(),
-    })
-    .where(eq(dashboards.id, id))
-    .run();
+  const updates: Partial<typeof projects.$inferInsert> = { updatedAt: now() };
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.config !== undefined) updates.config = data.config;
+  if (data.pinned !== undefined) updates.pinned = data.pinned;
+  if (data.systemPrompt !== undefined) updates.systemPrompt = data.systemPrompt;
+  if (data.lastAccessedAt !== undefined) updates.lastAccessedAt = data.lastAccessedAt;
 
-  return getDashboard(db, id) ?? null;
+  db.update(projects).set(updates).where(eq(projects.id, id)).run();
+
+  return getProject(db, id) ?? null;
 }
 
-export function listDashboards(db: OpenlareDb) {
-  return db.select().from(dashboards).orderBy(asc(dashboards.createdAt)).all();
+export function listProjects(db: OpenlareDb) {
+  return db
+    .select()
+    .from(projects)
+    .orderBy(desc(projects.pinned), desc(projects.lastAccessedAt), desc(projects.createdAt))
+    .all();
+}
+
+/**
+ * Update lastAccessedAt to now for a project.
+ */
+export function touchProject(
+  db: OpenlareDb,
+  projectId: string,
+): typeof projects.$inferSelect | null {
+  const existing = getProject(db, projectId);
+  if (!existing) return null;
+
+  db.update(projects)
+    .set({ lastAccessedAt: now(), updatedAt: now() })
+    .where(eq(projects.id, projectId))
+    .run();
+
+  return getProject(db, projectId) ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,12 +120,13 @@ export function listDashboards(db: OpenlareDb) {
 // ---------------------------------------------------------------------------
 
 export interface CreateQueueInput {
-  dashboardId: string;
+  projectId: string;
   name: string;
   ownerType: 'human' | 'assistant';
   description?: string;
   position?: number;
   agentLimit?: number;
+  systemPrompt?: string;
 }
 
 export function createQueue(db: OpenlareDb, input: CreateQueueInput) {
@@ -88,12 +136,13 @@ export function createQueue(db: OpenlareDb, input: CreateQueueInput) {
     .insert(queues)
     .values({
       id,
-      dashboardId: input.dashboardId,
+      projectId: input.projectId,
       name: input.name,
       ownerType: input.ownerType,
       description: input.description ?? null,
       position: input.position ?? 0,
       agentLimit: input.agentLimit ?? 1,
+      systemPrompt: input.systemPrompt ?? null,
       createdAt: ts,
       updatedAt: ts,
     })
@@ -101,11 +150,11 @@ export function createQueue(db: OpenlareDb, input: CreateQueueInput) {
     .get();
 }
 
-export function listQueues(db: OpenlareDb, dashboardId: string) {
+export function listQueues(db: OpenlareDb, projectId: string) {
   return db
     .select()
     .from(queues)
-    .where(eq(queues.dashboardId, dashboardId))
+    .where(eq(queues.projectId, projectId))
     .orderBy(asc(queues.position))
     .all();
 }
@@ -116,6 +165,7 @@ export function getQueue(db: OpenlareDb, id: string) {
 
 export interface UpdateQueueInput {
   description?: string | null;
+  systemPrompt?: string | null;
 }
 
 export function updateQueue(
@@ -130,6 +180,7 @@ export function updateQueue(
     updatedAt: now(),
   };
   if (input.description !== undefined) updates.description = input.description;
+  if (input.systemPrompt !== undefined) updates.systemPrompt = input.systemPrompt;
 
   return db.update(queues).set(updates).where(eq(queues.id, id)).returning().get() ?? null;
 }
@@ -163,13 +214,13 @@ export function createTransition(db: OpenlareDb, input: CreateTransitionInput) {
     .get();
 }
 
-export function listTransitions(db: OpenlareDb, dashboardId: string) {
-  // Join through queues to filter by dashboard
+export function listTransitions(db: OpenlareDb, projectId: string) {
+  // Join through queues to filter by project
   return db
     .select()
     .from(transitions)
     .innerJoin(queues, eq(transitions.fromQueueId, queues.id))
-    .where(eq(queues.dashboardId, dashboardId))
+    .where(eq(queues.projectId, projectId))
     .all()
     .map((row) => row.transitions);
 }
@@ -179,7 +230,7 @@ export function listTransitions(db: OpenlareDb, dashboardId: string) {
 // ---------------------------------------------------------------------------
 
 export interface CreateTaskInput {
-  dashboardId: string;
+  projectId: string;
   queueId: string;
   title: string;
   description?: string;
@@ -193,7 +244,7 @@ export function createTask(db: OpenlareDb, input: CreateTaskInput) {
     .insert(tasks)
     .values({
       id,
-      dashboardId: input.dashboardId,
+      projectId: input.projectId,
       queueId: input.queueId,
       title: input.title,
       description: input.description ?? null,
@@ -218,11 +269,11 @@ export function listTasks(db: OpenlareDb, queueId: string) {
     .all();
 }
 
-export function listDashboardTasks(db: OpenlareDb, dashboardId: string) {
+export function listProjectTasks(db: OpenlareDb, projectId: string) {
   return db
     .select()
     .from(tasks)
-    .where(eq(tasks.dashboardId, dashboardId))
+    .where(eq(tasks.projectId, projectId))
     .orderBy(desc(tasks.priority), asc(tasks.createdAt))
     .all();
 }
@@ -242,13 +293,13 @@ export function moveTask(
   const task = getTask(db, taskId);
   if (!task) return null;
 
-  // Validate target queue exists and belongs to same dashboard
+  // Validate target queue exists and belongs to same project
   const targetQueue = getQueue(db, toQueueId);
-  if (!targetQueue || targetQueue.dashboardId !== task.dashboardId) return null;
+  if (!targetQueue || targetQueue.projectId !== task.projectId) return null;
 
   // Check transition constraint (only when strictTransitions is enabled)
-  const dashboard = getDashboard(db, task.dashboardId);
-  if (dashboard?.config?.strictTransitions) {
+  const project = getProject(db, task.projectId);
+  if (project?.config?.strictTransitions) {
     const transition = db
       .select()
       .from(transitions)
@@ -391,18 +442,28 @@ export function deleteTask(db: OpenlareDb, taskId: string): boolean {
 }
 
 /**
- * Get the next claimable task from assistant-owned queues in a dashboard.
+ * Get the next claimable task from assistant-owned queues in a project.
  * Returns the highest-priority unassigned, error-free task, respecting agent limits.
+ * If agentId is provided and the project has agent restrictions, verifies the agent is allowed.
  */
 export function getNextClaimableTask(
   db: OpenlareDb,
-  dashboardId: string,
+  projectId: string,
+  agentId?: string,
 ): typeof tasks.$inferSelect | undefined {
+  // If agentId provided, check project agent restrictions
+  if (agentId !== undefined) {
+    const projectAgentList = listProjectAgents(db, projectId);
+    if (projectAgentList.length > 0 && !projectAgentList.includes(agentId)) {
+      return undefined;
+    }
+  }
+
   // Get assistant-owned queues
   const assistantQueues = db
     .select()
     .from(queues)
-    .where(and(eq(queues.dashboardId, dashboardId), eq(queues.ownerType, 'assistant')))
+    .where(and(eq(queues.projectId, projectId), eq(queues.ownerType, 'assistant')))
     .all();
 
   for (const queue of assistantQueues) {
@@ -482,24 +543,24 @@ export function getTaskHistory(db: OpenlareDb, taskId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Seed default dashboard
+// Seed default project
 // ---------------------------------------------------------------------------
 
 /**
- * Create a default dashboard with todo → in-progress → done pipeline.
- * Returns existing dashboard if one already exists.
+ * Create a default project with todo → in-progress → done pipeline.
+ * Returns existing project if one already exists.
  */
-export function seedDefaultDashboard(db: OpenlareDb) {
-  const existing = listDashboards(db);
+export function seedDefaultProject(db: OpenlareDb) {
+  const existing = listProjects(db);
   if (existing.length > 0) return existing[0]!;
 
-  const dashboard = createDashboard(db, {
+  const project = createProject(db, {
     name: 'Default',
     config: { maxConcurrentAgents: 1, strictTransitions: false },
   });
 
   const todo = createQueue(db, {
-    dashboardId: dashboard.id,
+    projectId: project.id,
     name: 'Todo',
     ownerType: 'human',
     description: 'Tasks waiting to be picked up',
@@ -507,7 +568,7 @@ export function seedDefaultDashboard(db: OpenlareDb) {
   });
 
   const inProgress = createQueue(db, {
-    dashboardId: dashboard.id,
+    projectId: project.id,
     name: 'In Progress',
     ownerType: 'assistant',
     description: 'Tasks being worked on by the agent',
@@ -515,7 +576,7 @@ export function seedDefaultDashboard(db: OpenlareDb) {
   });
 
   const done = createQueue(db, {
-    dashboardId: dashboard.id,
+    projectId: project.id,
     name: 'Done',
     ownerType: 'human',
     description: 'Completed tasks',
@@ -552,7 +613,7 @@ export function seedDefaultDashboard(db: OpenlareDb) {
     toQueueId: inProgress.id,
     actorType: 'human',
   });
-  return dashboard;
+  return project;
 }
 
 // ---------------------------------------------------------------------------
@@ -562,16 +623,16 @@ export function seedDefaultDashboard(db: OpenlareDb) {
 /**
  * Delete a queue by ID.
  * - Refuses if the queue still has tasks (returns false).
- * - Refuses if this is the last queue in the dashboard (returns false).
+ * - Refuses if this is the last queue in the project (returns false).
  * - Cascades to transitions (handled by FK ON DELETE CASCADE in schema).
  */
 export function deleteQueue(db: OpenlareDb, queueId: string): boolean {
   const queue = getQueue(db, queueId);
   if (!queue) return false;
 
-  // Safety: don't allow deleting the last queue in a dashboard
-  const dashboardQueues = listQueues(db, queue.dashboardId);
-  if (dashboardQueues.length <= 1) return false;
+  // Safety: don't allow deleting the last queue in a project
+  const projectQueues = listQueues(db, queue.projectId);
+  if (projectQueues.length <= 1) return false;
 
   // Refuse if queue has tasks
   const queueTasks = listTasks(db, queueId);
@@ -606,4 +667,161 @@ export function updateQueuePositions(
       tx.update(queues).set({ position, updatedAt: now() }).where(eq(queues.id, id)).run();
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Project Agent operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Assign an agent to a project. Idempotent (duplicate assigns are ignored).
+ */
+export function assignAgent(
+  db: OpenlareDb,
+  projectId: string,
+  agentId: string,
+): typeof projectAgents.$inferSelect {
+  return (
+    db
+      .insert(projectAgents)
+      .values({ projectId, agentId })
+      .onConflictDoNothing()
+      .returning()
+      .get() ??
+    db
+      .select()
+      .from(projectAgents)
+      .where(and(eq(projectAgents.projectId, projectId), eq(projectAgents.agentId, agentId)))
+      .get()!
+  );
+}
+
+/**
+ * Remove an agent from a project.
+ * Returns true if removed, false if not found.
+ */
+export function removeAgent(db: OpenlareDb, projectId: string, agentId: string): boolean {
+  const existing = db
+    .select()
+    .from(projectAgents)
+    .where(and(eq(projectAgents.projectId, projectId), eq(projectAgents.agentId, agentId)))
+    .get();
+  if (!existing) return false;
+
+  db.delete(projectAgents)
+    .where(and(eq(projectAgents.projectId, projectId), eq(projectAgents.agentId, agentId)))
+    .run();
+  return true;
+}
+
+/**
+ * List all agent IDs assigned to a project.
+ */
+export function listProjectAgents(db: OpenlareDb, projectId: string): string[] {
+  return db
+    .select()
+    .from(projectAgents)
+    .where(eq(projectAgents.projectId, projectId))
+    .all()
+    .map((row) => row.agentId);
+}
+
+// ---------------------------------------------------------------------------
+// Queue Template operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a queue template from a list of queue entries.
+ */
+export function createQueueTemplate(
+  db: OpenlareDb,
+  input: { name: string; entries: QueueTemplateEntry[] },
+): typeof queueTemplates.$inferSelect {
+  const id = newId();
+  return db
+    .insert(queueTemplates)
+    .values({
+      id,
+      name: input.name,
+      queuesJson: input.entries,
+      createdAt: now(),
+    })
+    .returning()
+    .get();
+}
+
+/**
+ * List all queue templates.
+ */
+export function listQueueTemplates(db: OpenlareDb): Array<typeof queueTemplates.$inferSelect> {
+  return db.select().from(queueTemplates).orderBy(asc(queueTemplates.createdAt)).all();
+}
+
+/**
+ * Delete a queue template by ID.
+ * Returns true if deleted, false if not found.
+ */
+export function deleteQueueTemplate(db: OpenlareDb, id: string): boolean {
+  const existing = db.select().from(queueTemplates).where(eq(queueTemplates.id, id)).get();
+  if (!existing) return false;
+
+  db.delete(queueTemplates).where(eq(queueTemplates.id, id)).run();
+  return true;
+}
+
+/**
+ * Create a project from a queue template.
+ * Returns the created project and its queues, or null if template not found.
+ */
+export function createProjectFromTemplate(
+  db: OpenlareDb,
+  input: { name: string; templateId: string },
+): { project: typeof projects.$inferSelect; queues: Array<typeof queues.$inferSelect> } | null {
+  const template = db
+    .select()
+    .from(queueTemplates)
+    .where(eq(queueTemplates.id, input.templateId))
+    .get();
+  if (!template) return null;
+
+  const project = createProject(db, { name: input.name });
+  const entries = template.queuesJson ?? [];
+  const createdQueues = entries.map((entry, index) =>
+    createQueue(db, {
+      projectId: project.id,
+      name: entry.name,
+      ownerType: entry.ownerType,
+      description: entry.description,
+      agentLimit: entry.agentLimit,
+      position: index,
+    }),
+  );
+
+  return { project, queues: createdQueues };
+}
+
+// ---------------------------------------------------------------------------
+// Project statistics
+// ---------------------------------------------------------------------------
+
+export interface ProjectStats {
+  totalTasks: number;
+  queueCount: number;
+}
+
+export function getProjectStats(db: OpenlareDb, projectId: string): ProjectStats {
+  const [taskRow] = db
+    .select({ total: count() })
+    .from(tasks)
+    .where(eq(tasks.projectId, projectId))
+    .all();
+  const [queueRow] = db
+    .select({ total: count() })
+    .from(queues)
+    .where(eq(queues.projectId, projectId))
+    .all();
+  return {
+    totalTasks: taskRow?.total ?? 0,
+    queueCount: queueRow?.total ?? 0,
+  };
 }

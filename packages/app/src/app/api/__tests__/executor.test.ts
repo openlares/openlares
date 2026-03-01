@@ -9,7 +9,7 @@ const mockStatus = {
 };
 vi.mock('@/lib/task-executor', () => ({
   getExecutorStatus: vi.fn(() => ({ ...mockStatus })),
-  startExecutor: vi.fn((dashboardId: string) => {
+  startExecutor: vi.fn((_projectId: string) => {
     mockStatus.running = true;
   }),
   stopExecutor: vi.fn(() => {
@@ -44,11 +44,11 @@ describe('GET /api/executor', () => {
 // POST /api/executor
 // ---------------------------------------------------------------------------
 describe('POST /api/executor action=start', () => {
-  it('starts the executor with a dashboardId', async () => {
+  it('starts the executor with a projectId', async () => {
     const req = new Request('http://localhost/api/executor', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'start', dashboardId: 'dash-1' }),
+      body: JSON.stringify({ action: 'start', projectId: 'dash-1' }),
     });
     const res = await postExecutor(req);
     expect(res.status).toBe(200);
@@ -56,7 +56,7 @@ describe('POST /api/executor action=start', () => {
     expect(data).toHaveProperty('ok', true);
   });
 
-  it('returns 400 when dashboardId is missing', async () => {
+  it('returns 400 when projectId is missing', async () => {
     const req = new Request('http://localhost/api/executor', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -75,7 +75,7 @@ describe('POST /api/executor action=start', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         action: 'start',
-        dashboardId: 'dash-1',
+        projectId: 'dash-1',
         gatewayUrl: 'http://gw',
         gatewayToken: 'tok',
       }),

@@ -1,12 +1,5 @@
 import { vi, beforeEach, describe, it, expect } from 'vitest';
-import {
-  createDb,
-  seedDefaultDashboard,
-  listDashboards,
-  listQueues,
-  listTransitions,
-  createTransition,
-} from '@openlares/db';
+import { createDb, seedDefaultProject, listQueues, listTransitions } from '@openlares/db';
 import type { OpenlareDb } from '@openlares/db';
 
 // --- DB mock ---
@@ -17,21 +10,21 @@ vi.mock('@/lib/task-events', () => ({ emit: vi.fn() }));
 import {
   GET as listTransitionsRoute,
   POST as createTransitionRoute,
-} from '../dashboards/[id]/transitions/route';
+} from '../projects/[id]/transitions/route';
 import { DELETE as deleteTransitionRoute } from '../transitions/[id]/route';
 
-let dashboardId: string;
+let projectId: string;
 let todoQueueId: string;
-let inProgressQueueId: string;
+let _inProgressQueueId: string;
 let doneQueueId: string;
 
 beforeEach(() => {
   testDb = createDb(':memory:');
-  const dashboard = seedDefaultDashboard(testDb)!;
-  dashboardId = dashboard.id;
-  const queues = listQueues(testDb, dashboardId);
+  const dashboard = seedDefaultProject(testDb)!;
+  projectId = dashboard.id;
+  const queues = listQueues(testDb, projectId);
   todoQueueId = queues.find((q) => q.name === 'Todo')!.id;
-  inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
+  _inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
   doneQueueId = queues.find((q) => q.name === 'Done')!.id;
 });
 
@@ -40,8 +33,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe('GET /api/dashboards/[id]/transitions', () => {
   it('returns the seeded transitions list', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/transitions`);
-    const res = await listTransitionsRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/transitions`);
+    const res = await listTransitionsRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
@@ -49,8 +42,8 @@ describe('GET /api/dashboards/[id]/transitions', () => {
   });
 
   it('transitions have expected fields', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/transitions`);
-    const res = await listTransitionsRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/transitions`);
+    const res = await listTransitionsRoute(req, { params: Promise.resolve({ id: projectId }) });
     const data = await res.json();
     const t = data[0];
     expect(t).toHaveProperty('id');
@@ -65,7 +58,7 @@ describe('GET /api/dashboards/[id]/transitions', () => {
 // ---------------------------------------------------------------------------
 describe('POST /api/dashboards/[id]/transitions', () => {
   it('creates a new transition with 201 status', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/transitions`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/transitions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -75,7 +68,7 @@ describe('POST /api/dashboards/[id]/transitions', () => {
         autoTrigger: false,
       }),
     });
-    const res = await createTransitionRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createTransitionRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(201);
     const data = await res.json();
     expect(data).toHaveProperty('fromQueueId', todoQueueId);
@@ -84,22 +77,22 @@ describe('POST /api/dashboards/[id]/transitions', () => {
   });
 
   it('returns 400 when fromQueueId is missing', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/transitions`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/transitions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ toQueueId: doneQueueId, actorType: 'human' }),
     });
-    const res = await createTransitionRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createTransitionRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when actorType is missing', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/transitions`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/transitions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ fromQueueId: todoQueueId, toQueueId: doneQueueId }),
     });
-    const res = await createTransitionRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createTransitionRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(400);
   });
 });
@@ -109,7 +102,7 @@ describe('POST /api/dashboards/[id]/transitions', () => {
 // ---------------------------------------------------------------------------
 describe('DELETE /api/transitions/[id]', () => {
   it('deletes a transition', async () => {
-    const transitions = listTransitions(testDb, dashboardId);
+    const transitions = listTransitions(testDb, projectId);
     const transitionId = transitions[0]!.id;
 
     const req = new Request(`http://localhost/api/transitions/${transitionId}`, {

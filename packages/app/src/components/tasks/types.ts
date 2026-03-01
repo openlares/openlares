@@ -1,16 +1,22 @@
 /** Client-side types for the tasks dashboard. */
 
-export interface Dashboard {
+export interface Project {
   id: string;
   name: string;
   config: { maxConcurrentAgents?: number; strictTransitions?: boolean } | null;
+  pinned: boolean;
+  lastAccessedAt: number | null;
+  systemPrompt: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
+// Legacy alias — components use Dashboard, new code should use Project
+export type Dashboard = Project;
+
 export interface Queue {
   id: string;
-  dashboardId: string;
+  projectId: string;
   name: string;
   ownerType: 'human' | 'assistant';
   description: string | null;
@@ -32,7 +38,7 @@ export interface Transition {
 
 export interface Task {
   id: string;
-  dashboardId: string;
+  projectId: string;
   queueId: string;
   title: string;
   description: string | null;

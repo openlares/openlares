@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { Dashboard, Queue, Transition } from './types';
 import { useToastStore } from '@/lib/toast-store';
 
-interface DashboardConfigProps {
+interface ProjectConfigProps {
   dashboard: Dashboard;
   queues: Queue[];
   transitions: Transition[];
@@ -17,13 +17,13 @@ const ownerOptions: { value: Queue['ownerType']; label: string; icon: string }[]
   { value: 'assistant', label: 'Assistant', icon: '🤖' },
 ];
 
-export function DashboardConfig({
+export function ProjectConfig({
   dashboard,
   queues: initialQueues,
   transitions: initialTransitions,
   onClose,
   onQueuesChange,
-}: DashboardConfigProps) {
+}: ProjectConfigProps) {
   const [queues, setQueues] = useState(initialQueues);
   const [transitions, setTransitions] = useState(initialTransitions);
   const [newQueueName, setNewQueueName] = useState('');
@@ -42,7 +42,7 @@ export function DashboardConfig({
 
   /** Refetch queues + transitions from API. */
   const refetch = useCallback(async () => {
-    const qRes = await fetch(`/api/dashboards/${dashboard.id}/queues`);
+    const qRes = await fetch(`/api/projects/${dashboard.id}/queues`);
     if (qRes.ok) {
       const qData = (await qRes.json()) as { queues: Queue[]; transitions: Transition[] };
       setQueues(qData.queues);
@@ -55,7 +55,7 @@ export function DashboardConfig({
     if (!newQueueName.trim()) return;
 
     try {
-      const res = await fetch(`/api/dashboards/${dashboard.id}/queues`, {
+      const res = await fetch(`/api/projects/${dashboard.id}/queues`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,7 +131,7 @@ export function DashboardConfig({
 
       // Persist
       try {
-        const res = await fetch(`/api/dashboards/${dashboard.id}/queues`, {
+        const res = await fetch(`/api/projects/${dashboard.id}/queues`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -191,7 +191,7 @@ export function DashboardConfig({
   const handleAddTransition = useCallback(
     async (fromId: string, toId: string, actorType: Transition['actorType']) => {
       try {
-        const res = await fetch(`/api/dashboards/${dashboard.id}/transitions`, {
+        const res = await fetch(`/api/projects/${dashboard.id}/transitions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fromQueueId: fromId, toQueueId: toId, actorType }),
@@ -234,7 +234,7 @@ export function DashboardConfig({
     async (enabled: boolean) => {
       setStrictTransitions(enabled);
       try {
-        const res = await fetch(`/api/dashboards/${dashboard.id}`, {
+        const res = await fetch(`/api/projects/${dashboard.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

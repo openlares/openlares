@@ -1,5 +1,5 @@
 import { vi, beforeEach, describe, it, expect } from 'vitest';
-import { createDb, seedDefaultDashboard, listQueues, createTask } from '@openlares/db';
+import { createDb, seedDefaultProject, listQueues, createTask } from '@openlares/db';
 import type { OpenlareDb } from '@openlares/db';
 
 // --- DB mock ---
@@ -9,14 +9,14 @@ vi.mock('@/lib/task-events', () => ({ emit: vi.fn() }));
 
 import { GET as listCommentsRoute, POST as addCommentRoute } from '../tasks/[id]/comments/route';
 
-let dashboardId: string;
+let projectId: string;
 let todoQueueId: string;
 
 beforeEach(() => {
   testDb = createDb(':memory:');
-  const dashboard = seedDefaultDashboard(testDb)!;
-  dashboardId = dashboard.id;
-  const queues = listQueues(testDb, dashboardId);
+  const dashboard = seedDefaultProject(testDb)!;
+  projectId = dashboard.id;
+  const queues = listQueues(testDb, projectId);
   todoQueueId = queues.find((q) => q.name === 'Todo')!.id;
 });
 
@@ -25,7 +25,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe('GET /api/tasks/[id]/comments', () => {
   it('returns an empty list for a new task', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Commented task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Commented task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}/comments`);
     const res = await listCommentsRoute(req, { params: Promise.resolve({ id: task.id }) });
     expect(res.status).toBe(200);
@@ -46,7 +46,7 @@ describe('GET /api/tasks/[id]/comments', () => {
 // ---------------------------------------------------------------------------
 describe('POST /api/tasks/[id]/comments', () => {
   it('adds a comment to a task with 201 status', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}/comments`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -62,7 +62,7 @@ describe('POST /api/tasks/[id]/comments', () => {
   });
 
   it('returns 400 when content is empty', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}/comments`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -73,7 +73,7 @@ describe('POST /api/tasks/[id]/comments', () => {
   });
 
   it('returns 400 when content is missing', async () => {
-    const task = createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Task' });
+    const task = createTask(testDb, { projectId, queueId: todoQueueId, title: 'Task' });
     const req = new Request(`http://localhost/api/tasks/${task.id}/comments`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

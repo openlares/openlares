@@ -5,7 +5,7 @@
  * and seeds the default dashboard on first use.
  */
 
-import { createDb, seedDefaultDashboard, type OpenlareDb } from '@openlares/db';
+import { createDb, seedDefaultProject, type OpenlareDb } from '@openlares/db';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -29,7 +29,7 @@ export function getDb(): OpenlareDb {
   const _db = db;
 
   // Seed default dashboard if none exists
-  seedDefaultDashboard(_db);
+  seedDefaultProject(_db);
 
   return _db;
 }
