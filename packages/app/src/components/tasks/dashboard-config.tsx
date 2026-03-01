@@ -132,7 +132,7 @@ export function ProjectConfig({
         setRenameValue(projectName);
       }
     } catch {
-      addToast('error', 'Network error \u2014 check your connection');
+      addToast('error', 'Network error — check your connection');
       setRenameValue(projectName);
     } finally {
       setRenaming(false);
@@ -157,7 +157,7 @@ export function ProjectConfig({
         addToast('error', errData.error ?? 'Failed to assign agent');
       }
     } catch {
-      addToast('error', 'Network error \u2014 check your connection');
+      addToast('error', 'Network error — check your connection');
     }
   }, [newAgentInput, projectId, addToast]);
 
@@ -176,7 +176,7 @@ export function ProjectConfig({
           addToast('error', errData.error ?? 'Failed to remove agent');
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
       }
     },
     [projectId, addToast],
@@ -196,7 +196,7 @@ export function ProjectConfig({
         addToast('error', errData.error ?? 'Failed to save system prompt');
       }
     } catch {
-      addToast('error', 'Network error \u2014 check your connection');
+      addToast('error', 'Network error — check your connection');
     }
   }, [projectSystemPrompt, projectId, addToast]);
 
@@ -231,7 +231,7 @@ export function ProjectConfig({
           await refetch();
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
         await refetch();
       }
     },
@@ -267,7 +267,7 @@ export function ProjectConfig({
         addToast('error', errData.error ?? 'Failed to save template');
       }
     } catch {
-      addToast('error', 'Network error \u2014 check your connection');
+      addToast('error', 'Network error — check your connection');
     } finally {
       setSavingTemplate(false);
     }
@@ -285,7 +285,7 @@ export function ProjectConfig({
           addToast('error', 'Failed to delete template');
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
       }
     },
     [addToast],
@@ -316,7 +316,7 @@ export function ProjectConfig({
         addToast('error', errData.error ?? 'Failed to add queue');
       }
     } catch {
-      addToast('error', 'Network error \u2014 check your connection');
+      addToast('error', 'Network error — check your connection');
     }
   }, [
     dashboard.id,
@@ -341,7 +341,7 @@ export function ProjectConfig({
           addToast('error', errData.error ?? 'Failed to delete queue');
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
       } finally {
         setDeletingQueueId(null);
       }
@@ -388,7 +388,7 @@ export function ProjectConfig({
           await refetch(); // Roll back optimistic update
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
         await refetch();
       }
     },
@@ -421,7 +421,7 @@ export function ProjectConfig({
           await refetch();
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
         await refetch();
       }
     },
@@ -444,7 +444,7 @@ export function ProjectConfig({
           addToast('error', errData.error ?? 'Failed to add transition');
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
       }
     },
     [dashboard.id, refetch, addToast],
@@ -463,7 +463,7 @@ export function ProjectConfig({
           addToast('error', errData.error ?? 'Failed to delete transition');
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
       } finally {
         setDeletingTransitionId(null);
       }
@@ -488,7 +488,7 @@ export function ProjectConfig({
           setStrictTransitions(!enabled); // revert
         }
       } catch {
-        addToast('error', 'Network error \u2014 check your connection');
+        addToast('error', 'Network error — check your connection');
         setStrictTransitions(!enabled); // revert
       }
     },
@@ -508,8 +508,8 @@ export function ProjectConfig({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-700/50 px-5 py-3">
           <h3 className="text-lg font-semibold text-slate-100">Project Settings</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
-            \u2715
+          <button onClick={onClose} className="cursor-pointer text-slate-400 hover:text-slate-200">
+            ✕
           </button>
         </div>
 
@@ -531,7 +531,7 @@ export function ProjectConfig({
                 disabled={renaming || !renameValue.trim() || renameValue.trim() === projectName}
                 className="rounded-lg bg-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-600 disabled:opacity-50"
               >
-                {renaming ? 'Saving\u2026' : 'Rename'}
+                {renaming ? 'Saving…' : 'Rename'}
               </button>
             </div>
           </div>
@@ -540,7 +540,7 @@ export function ProjectConfig({
           <div className="mb-5">
             <h4 className="mb-2 text-sm font-semibold text-slate-200">Agents</h4>
             {!agentsLoaded ? (
-              <p className="text-xs text-slate-500">Loading\u2026</p>
+              <p className="text-xs text-slate-500">Loading…</p>
             ) : assignedAgents.length === 0 ? (
               <p className="mb-2 text-xs text-slate-400">Any agent can work on this project.</p>
             ) : (
@@ -556,7 +556,7 @@ export function ProjectConfig({
                       className="ml-0.5 text-slate-500 hover:text-red-400"
                       title={`Remove ${agentId}`}
                     >
-                      \u2715
+                      ✕
                     </button>
                   </span>
                 ))}
@@ -585,14 +585,14 @@ export function ProjectConfig({
           {/* Project system prompt */}
           <div className="mb-5">
             <label className="mb-1 block text-xs text-slate-400">
-              Project system prompt \u2014 injected for all tasks in this project
+              Project system prompt — injected for all tasks in this project
             </label>
             <textarea
               value={projectSystemPrompt}
               onChange={(e) => setProjectSystemPrompt(e.target.value)}
               onBlur={() => void handleSaveProjectSystemPrompt()}
               rows={3}
-              placeholder="Instructions injected into every task in this project\u2026"
+              placeholder="Instructions injected into every task in this project…"
               className="w-full resize-none rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
             />
           </div>
@@ -612,7 +612,7 @@ export function ProjectConfig({
                       className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
                       title="Move up"
                     >
-                      \u25b2
+                      ▲
                     </button>
                     <button
                       onClick={() => void handleMoveQueue(idx, 'down')}
@@ -620,7 +620,7 @@ export function ProjectConfig({
                       className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
                       title="Move down"
                     >
-                      \u25bc
+                      ▼
                     </button>
                   </div>
 
@@ -641,7 +641,7 @@ export function ProjectConfig({
                     {queue.ownerType === 'human' ? '👤 Human' : '🤖 Assistant'}
                   </span>
                   <span className="text-xs text-slate-500">
-                    limit: {queue.agentLimit === 0 ? '\u221e' : queue.agentLimit}
+                    limit: {queue.agentLimit === 0 ? '∞' : queue.agentLimit}
                   </span>
 
                   {/* Delete button with confirmation */}
@@ -687,7 +687,7 @@ export function ProjectConfig({
                           setEditingDescriptionValue('');
                         }
                       }}
-                      placeholder="Add a description\u2026"
+                      placeholder="Add a description…"
                       className="w-full rounded bg-slate-700/50 px-2 py-1 text-xs text-slate-300 placeholder-slate-600 outline-none ring-1 ring-cyan-400/50 focus:ring-cyan-400"
                     />
                   ) : (
@@ -702,11 +702,11 @@ export function ProjectConfig({
                         </span>
                       ) : (
                         <span className="text-xs text-slate-600 group-hover:text-slate-500">
-                          Add description\u2026
+                          Add description…
                         </span>
                       )}
                       <span className="text-[10px] text-slate-600 opacity-0 group-hover:opacity-100">
-                        \u270e
+                        ✎
                       </span>
                     </button>
                   )}
@@ -718,7 +718,7 @@ export function ProjectConfig({
                     onClick={() => handleToggleQueueSystemPrompt(queue)}
                     className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-400"
                   >
-                    <span>{expandedSystemPromptId === queue.id ? '\u25be' : '\u25b8'}</span>
+                    <span>{expandedSystemPromptId === queue.id ? '▾' : '▸'}</span>
                     <span>System prompt</span>
                     {queue.systemPrompt && (
                       <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
@@ -735,7 +735,7 @@ export function ProjectConfig({
                       }
                       onBlur={() => void handleSaveQueueSystemPrompt(queue.id)}
                       rows={3}
-                      placeholder="Instructions for this queue\u2026"
+                      placeholder="Instructions for this queue…"
                       className="mt-1 w-full resize-none rounded bg-slate-700/50 px-2 py-1 text-xs text-slate-300 placeholder-slate-600 outline-none ring-1 ring-cyan-400/50 focus:ring-cyan-400"
                     />
                   )}
@@ -784,7 +784,7 @@ export function ProjectConfig({
             <input
               value={newQueueDescription}
               onChange={(e) => setNewQueueDescription(e.target.value)}
-              placeholder="Description (optional)\u2026"
+              placeholder="Description (optional)…"
               className="w-full rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-400 placeholder-slate-600 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
             />
           </div>
@@ -796,7 +796,7 @@ export function ProjectConfig({
               <p className="text-xs text-slate-400">
                 {strictTransitions
                   ? 'Only defined transitions are allowed'
-                  : 'Free movement \u2014 tasks can move between any queues'}
+                  : 'Free movement — tasks can move between any queues'}
               </p>
             </div>
             <button
@@ -829,7 +829,7 @@ export function ProjectConfig({
                       className="flex items-center gap-2 rounded-lg bg-slate-700/30 px-3 py-2 text-sm"
                     >
                       <span className="text-slate-200">{from?.name ?? '?'}</span>
-                      <span className="text-slate-500">\u2192</span>
+                      <span className="text-slate-500">→</span>
                       <span className="text-slate-200">{to?.name ?? '?'}</span>
                       <span
                         className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium ${
@@ -903,7 +903,7 @@ export function ProjectConfig({
                     if (e.key === 'Enter') void handleSaveTemplate();
                     if (e.key === 'Escape') setShowTemplateSave(false);
                   }}
-                  placeholder="Template name\u2026"
+                  placeholder="Template name…"
                   autoFocus
                   className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
                 />
@@ -912,7 +912,7 @@ export function ProjectConfig({
                   disabled={savingTemplate || !templateName.trim()}
                   className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
                 >
-                  {savingTemplate ? 'Saving\u2026' : 'Save'}
+                  {savingTemplate ? 'Saving…' : 'Save'}
                 </button>
                 <button
                   onClick={() => setShowTemplateSave(false)}
@@ -985,13 +985,13 @@ export function ProjectConfig({
         <div className="flex justify-end gap-2 border-t border-slate-700/50 px-5 py-3">
           <button
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
+            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500"
+            className="cursor-pointer rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500"
           >
             Done
           </button>
@@ -1032,7 +1032,7 @@ function TransitionAdder({
           ))}
         </select>
       </div>
-      <span className="pb-2 text-slate-500">\u2192</span>
+      <span className="pb-2 text-slate-500">→</span>
       <div>
         <label className="mb-1 block text-xs text-slate-400">To</label>
         <select

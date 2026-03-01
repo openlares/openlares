@@ -30,3 +30,12 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background-color: #64748b; /* slate-500 */
 }
+
+/* Buttons always show pointer cursor */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
