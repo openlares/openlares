@@ -16,7 +16,10 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!deleted) {
     // Could be: has tasks, or last queue in dashboard
     return NextResponse.json(
-      { error: 'Cannot delete queue — it either has tasks or is the last queue in this dashboard' },
+      {
+        error:
+          'Cannot delete queue \u2014 it either has tasks or is the last queue in this dashboard',
+      },
       { status: 400 },
     );
   }
@@ -31,7 +34,10 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = (await request.json()) as { description?: string | null };
+  const body = (await request.json()) as {
+    description?: string | null;
+    systemPrompt?: string | null;
+  };
 
   const db = getDb();
   const queue = getQueue(db, id);
@@ -39,7 +45,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Queue not found' }, { status: 404 });
   }
 
-  const updated = updateQueue(db, id, { description: body.description });
+  const updated = updateQueue(db, id, {
+    description: body.description,
+    systemPrompt: body.systemPrompt,
+  });
   if (!updated) {
     return NextResponse.json({ error: 'Failed to update queue' }, { status: 500 });
   }

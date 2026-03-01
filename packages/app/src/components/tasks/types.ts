@@ -20,6 +20,7 @@ export interface Queue {
   name: string;
   ownerType: 'human' | 'assistant';
   description: string | null;
+  systemPrompt: string | null;
   position: number;
   agentLimit: number;
   createdAt: number;
