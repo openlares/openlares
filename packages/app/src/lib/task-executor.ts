@@ -125,7 +125,7 @@ function pollForWork(projectId: string): void {
   }
 
   const db = getDb();
-  const task = getNextClaimableTask(db, projectId);
+  const task = getNextClaimableTask(db, projectId, AGENT_ID);
 
   if (task) {
     const sessionKey = `openlares:task:${task.id}`;
@@ -154,10 +154,24 @@ interface BuildPromptInput {
   comments: Array<{ authorType: string; content: string }>;
   currentQueueName: string;
   destinations: Array<{ name: string; description: string | null }>;
+  projectSystemPrompt?: string | null;
+  queueSystemPrompt?: string | null;
 }
 
 function buildPrompt(input: BuildPromptInput): string {
-  let prompt = `# Task: ${input.title}\n\n`;
+  let prompt = '';
+
+  // Inject project-level system prompt
+  if (input.projectSystemPrompt) {
+    prompt += `${input.projectSystemPrompt}\n\n`;
+  }
+
+  // Inject queue-level system prompt
+  if (input.queueSystemPrompt) {
+    prompt += `${input.queueSystemPrompt}\n\n`;
+  }
+
+  prompt += `# Task: ${input.title}\n\n`;
   if (input.description) {
     prompt += `${input.description}\n\n`;
   }
@@ -217,12 +231,16 @@ async function dispatchTask(
 
     const comments = listComments(db, taskId);
 
+    const project = getProject(db, projectId);
+
     const prompt = buildPrompt({
       title: task.title,
       description: task.description,
       comments: comments.map((c) => ({ authorType: c.authorType, content: c.content })),
       currentQueueName: currentQueue?.name ?? 'Unknown',
       destinations,
+      projectSystemPrompt: project?.systemPrompt,
+      queueSystemPrompt: currentQueue?.systemPrompt,
     });
 
     state.dispatchTime = Date.now();
