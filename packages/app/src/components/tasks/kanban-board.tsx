@@ -37,6 +37,8 @@ export function KanbanBoard({
   const [executorRunning, setExecutorRunning] = useState(false);
   const [executorTaskId, setExecutorTaskId] = useState<string | null>(null);
   const [showConfig, setShowConfig] = useState(false);
+  // Incremented on SSE task:comment — triggers TaskDetail to re-fetch comments
+  const [commentRefreshKey, setCommentRefreshKey] = useState(0);
 
   const addToast = useToastStore((s) => s.addToast);
 
@@ -133,6 +135,11 @@ export function KanbanBoard({
           setExecutorRunning(event.running ?? false);
           setExecutorTaskId(event.currentTaskId ?? null);
           return;
+        }
+
+        // Trigger comment refresh in TaskDetail on agent comment events
+        if (event.type === 'task:comment') {
+          setCommentRefreshKey((k) => k + 1);
         }
 
         // Any task or executor change — refetch tasks for a consistent view
@@ -457,6 +464,7 @@ export function KanbanBoard({
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdateTask}
           onDelete={handleDeleteTask}
+          refreshKey={commentRefreshKey}
         />
       )}
 
