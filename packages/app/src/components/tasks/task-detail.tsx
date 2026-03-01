@@ -13,6 +13,8 @@ interface TaskDetailProps {
   onDelete: (taskId: string) => void;
   /** Increment to force a comment re-fetch (e.g. from SSE task:comment event) */
   refreshKey?: number;
+  /** True when the executor is actively processing this task */
+  isRunning?: boolean;
 }
 
 export function TaskDetail({
@@ -23,6 +25,7 @@ export function TaskDetail({
   onUpdate,
   onDelete,
   refreshKey = 0,
+  isRunning = false,
 }: TaskDetailProps) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? '');
@@ -269,6 +272,14 @@ export function TaskDetail({
             <option value={2}>P2 — Normal</option>
             <option value={3}>P3 — Low</option>
           </select>
+
+          {/* Running indicator */}
+          {isRunning && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg bg-cyan-500/10 px-3 py-2 text-xs text-cyan-300 ring-1 ring-cyan-500/20">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
+              Agent is working on this task…
+            </div>
+          )}
 
           {/* Metadata */}
           <div className="mb-4 space-y-1 text-xs text-slate-500">
