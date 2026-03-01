@@ -465,6 +465,7 @@ export function KanbanBoard({
           onUpdate={handleUpdateTask}
           onDelete={handleDeleteTask}
           refreshKey={commentRefreshKey}
+          isRunning={executorTaskId === selectedTask.id}
         />
       )}
 
