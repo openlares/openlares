@@ -4,7 +4,7 @@
  * All mutations return the affected row(s). IDs are generated via randomUUID().
  */
 
-import { eq, and, asc, desc, isNull, isNotNull } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, isNotNull, count } from 'drizzle-orm';
 import type { OpenlareDb } from './client';
 import {
   projects,
@@ -798,4 +798,30 @@ export function createProjectFromTemplate(
   );
 
   return { project, queues: createdQueues };
+}
+
+// ---------------------------------------------------------------------------
+// Project statistics
+// ---------------------------------------------------------------------------
+
+export interface ProjectStats {
+  totalTasks: number;
+  queueCount: number;
+}
+
+export function getProjectStats(db: OpenlareDb, projectId: string): ProjectStats {
+  const [taskRow] = db
+    .select({ total: count() })
+    .from(tasks)
+    .where(eq(tasks.projectId, projectId))
+    .all();
+  const [queueRow] = db
+    .select({ total: count() })
+    .from(queues)
+    .where(eq(queues.projectId, projectId))
+    .all();
+  return {
+    totalTasks: taskRow?.total ?? 0,
+    queueCount: queueRow?.total ?? 0,
+  };
 }

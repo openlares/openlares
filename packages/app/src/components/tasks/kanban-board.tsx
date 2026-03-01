@@ -67,7 +67,7 @@ export function KanbanBoard({
   const fallbackPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshTasks = useCallback(() => {
-    fetch(`/api/dashboards/${dashboard.id}/tasks`)
+    fetch(`/api/projects/${dashboard.id}/tasks`)
       .then((res) => (res.ok ? (res.json() as Promise<Task[]>) : null))
       .then((freshTasks) => {
         if (freshTasks) setTasks(freshTasks);
@@ -287,7 +287,7 @@ export function KanbanBoard({
       if (!showAddModal || !newTitle.trim()) return;
 
       try {
-        const res = await fetch(`/api/dashboards/${dashboard.id}/tasks`, {
+        const res = await fetch(`/api/projects/${dashboard.id}/tasks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

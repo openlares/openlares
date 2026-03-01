@@ -8,8 +8,8 @@ vi.mock('@/lib/db', () => ({ getDb: () => testDb }));
 vi.mock('@/lib/task-events', () => ({ emit: vi.fn() }));
 
 // Route handlers imported AFTER mocks are declared
-import { GET as listProjectsRoute, POST as createProjectRoute } from '../dashboards/route';
-import { GET as getProjectRoute, PATCH as patchDashboardRoute } from '../dashboards/[id]/route';
+import { GET as listProjectsRoute, POST as createProjectRoute } from '../projects/route';
+import { GET as getProjectRoute, PATCH as patchDashboardRoute } from '../projects/[id]/route';
 
 beforeEach(() => {
   testDb = createDb(':memory:');
