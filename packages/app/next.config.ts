@@ -7,10 +7,6 @@ const nextConfig: NextConfig = {
     '@openlares/ui',
     '@openlares/game-engine',
   ],
-  // We lint via turbo, not Next.js built-in
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 };
 
 export default nextConfig;
