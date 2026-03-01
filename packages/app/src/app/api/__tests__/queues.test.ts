@@ -23,7 +23,7 @@ import { DELETE as deleteQueueRoute } from '../queues/[id]/route';
 
 let projectId: string;
 let todoQueueId: string;
-let inProgressQueueId: string;
+let _inProgressQueueId: string;
 
 beforeEach(() => {
   testDb = createDb(':memory:');
@@ -31,7 +31,7 @@ beforeEach(() => {
   projectId = dashboard.id;
   const queues = listQueues(testDb, projectId);
   todoQueueId = queues.find((q) => q.name === 'Todo')!.id;
-  inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
+  _inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
 });
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,6 @@ import { vi, beforeEach, describe, it, expect } from 'vitest';
 import {
   createDb,
   seedDefaultProject,
-  listProjects,
   listQueues,
   createTask,
   setTaskError,

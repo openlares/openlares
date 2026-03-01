@@ -22,7 +22,7 @@ import { DELETE as deleteTransitionRoute } from '../transitions/[id]/route';
 
 let projectId: string;
 let todoQueueId: string;
-let inProgressQueueId: string;
+let _inProgressQueueId: string;
 let doneQueueId: string;
 
 beforeEach(() => {
@@ -31,7 +31,7 @@ beforeEach(() => {
   projectId = dashboard.id;
   const queues = listQueues(testDb, projectId);
   todoQueueId = queues.find((q) => q.name === 'Todo')!.id;
-  inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
+  _inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
   doneQueueId = queues.find((q) => q.name === 'Done')!.id;
 });
 
