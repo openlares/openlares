@@ -262,13 +262,16 @@ export function TaskDetail({
           />
 
           <label className="mb-1 block text-xs text-slate-400">Priority</label>
-          <input
-            type="number"
-            min={0}
+          <select
             value={priority}
             onChange={(e) => setPriority(Number(e.target.value))}
-            className="mb-4 w-24 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
-          />
+            className="mb-4 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+          >
+            <option value={0}>None</option>
+            <option value={1}>P1 — Urgent</option>
+            <option value={2}>P2 — Normal</option>
+            <option value={3}>P3 — Low</option>
+          </select>
 
           {/* Running indicator */}
           {isRunning && (
