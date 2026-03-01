@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Project } from '@/components/tasks/types';
 
@@ -13,12 +13,27 @@ interface ProjectsGridProps {
   initialProjects: ProjectWithStats[];
 }
 
+interface QueueTemplate {
+  id: string;
+  name: string;
+}
+
 export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
   const router = useRouter();
   const [projects, setProjects] = useState(initialProjects);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState('');
+  const [templateId, setTemplateId] = useState('');
+  const [templates, setTemplates] = useState<QueueTemplate[]>([]);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (!showNewForm) return;
+    fetch('/api/queue-templates')
+      .then((r) => r.json() as Promise<QueueTemplate[]>)
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, [showNewForm]);
 
   const refreshProjects = useCallback(() => {
     router.refresh();
@@ -29,14 +44,17 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
     if (!newName.trim()) return;
     setCreating(true);
     try {
+      const payload: { name: string; templateId?: string } = { name: newName.trim() };
+      if (templateId) payload.templateId = templateId;
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim() }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         const created = (await res.json()) as Project;
         setNewName('');
+        setTemplateId('');
         setShowNewForm(false);
         router.push(`/projects/${created.id}`);
       }
@@ -87,6 +105,21 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
                 autoFocus
                 className="rounded border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 placeholder-gray-500 outline-none focus:border-amber-400"
               />
+              <div>
+                <label className="mb-1 block text-xs text-gray-400">Template</label>
+                <select
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
+                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 outline-none focus:border-amber-400"
+                >
+                  <option value="">Default (Todo &#8594; In Progress &#8594; Done)</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="flex gap-2">
                 <button
                   type="submit"
@@ -100,6 +133,7 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
                   onClick={() => {
                     setShowNewForm(false);
                     setNewName('');
+                    setTemplateId('');
                   }}
                   className="flex-1 rounded border border-gray-700 py-2 text-sm text-gray-400 hover:bg-gray-800"
                 >
