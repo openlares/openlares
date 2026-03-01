@@ -6,6 +6,9 @@ import { useToastStore } from '@/lib/toast-store';
 
 interface ProjectConfigProps {
   dashboard: Dashboard;
+  projectId: string;
+  projectName: string;
+  onRenameProject?: (name: string) => void;
   queues: Queue[];
   transitions: Transition[];
   onClose: () => void;
@@ -19,6 +22,9 @@ const ownerOptions: { value: Queue['ownerType']; label: string; icon: string }[]
 
 export function ProjectConfig({
   dashboard,
+  projectId,
+  projectName,
+  onRenameProject,
   queues: initialQueues,
   transitions: initialTransitions,
   onClose,
@@ -38,6 +44,9 @@ export function ProjectConfig({
     dashboard.config?.strictTransitions ?? false,
   );
 
+  const [renameValue, setRenameValue] = useState(projectName);
+  const [renaming, setRenaming] = useState(false);
+
   const addToast = useToastStore((s) => s.addToast);
 
   /** Refetch queues + transitions from API. */
@@ -49,6 +58,33 @@ export function ProjectConfig({
       setTransitions(qData.transitions);
     }
   }, [dashboard.id]);
+
+  // Rename project
+  const handleRenameProject = useCallback(async () => {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === projectName) return;
+    setRenaming(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (res.ok) {
+        onRenameProject?.(trimmed);
+        addToast('success', 'Project renamed');
+      } else {
+        const errData = (await res.json()) as { error?: string };
+        addToast('error', errData.error ?? 'Failed to rename project');
+        setRenameValue(projectName);
+      }
+    } catch {
+      addToast('error', 'Network error — check your connection');
+      setRenameValue(projectName);
+    } finally {
+      setRenaming(false);
+    }
+  }, [renameValue, projectName, projectId, onRenameProject, addToast]);
 
   // Add a new queue
   const handleAddQueue = useCallback(async () => {
@@ -266,7 +302,7 @@ export function ProjectConfig({
       <div className="w-full max-w-2xl rounded-xl bg-slate-800 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-700/50 px-5 py-3">
-          <h3 className="text-lg font-semibold text-slate-100">Dashboard Configuration</h3>
+          <h3 className="text-lg font-semibold text-slate-100">Project Settings</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
             ✕
           </button>
@@ -274,6 +310,28 @@ export function ProjectConfig({
 
         <div className="max-h-[70vh] overflow-y-auto p-5">
           {/* Queues */}
+          {/* Project name */}
+          <div className="mb-5">
+            <label className="mb-1 block text-xs text-slate-400">Project name</label>
+            <div className="flex gap-2">
+              <input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleRenameProject();
+                }}
+                className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+              />
+              <button
+                onClick={() => void handleRenameProject()}
+                disabled={renaming || !renameValue.trim() || renameValue.trim() === projectName}
+                className="rounded-lg bg-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-600 disabled:opacity-50"
+              >
+                {renaming ? 'Saving…' : 'Rename'}
+              </button>
+            </div>
+          </div>
+
           <h4 className="mb-3 text-sm font-semibold text-slate-200">Queues (columns)</h4>
           <div className="mb-4 space-y-2">
             {sortedQueues.map((queue, idx) => (

@@ -448,6 +448,11 @@ export function KanbanBoard({
       {showConfig && (
         <ProjectConfig
           dashboard={dashboard}
+          projectId={dashboard.id}
+          projectName={dashboard.name}
+          onRenameProject={(name) => {
+            dashboard.name = name;
+          }}
           queues={queues}
           transitions={transitions}
           onClose={() => setShowConfig(false)}
