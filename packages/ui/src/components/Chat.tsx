@@ -36,7 +36,7 @@ export interface ChatProps {
 const MAX_DISPLAY_LENGTH = 2000;
 
 /** Truncation suffix shown when a message is cut. */
-const TRUNCATION_NOTICE = '\n\n\u2026 (message truncated)';
+const TRUNCATION_NOTICE = '\n\n… (message truncated)';
 
 /** Default max height for the textarea (px). User can drag to resize. */
 const DEFAULT_TEXTAREA_MAX_HEIGHT = 120;
@@ -171,7 +171,7 @@ function MessageItem({ message }: { message: ChatMessage }) {
 function LoadingMoreIndicator() {
   return (
     <div className="flex items-center justify-center py-3">
-      <span className="text-xs text-gray-500">Loading older messages\u2026</span>
+      <span className="text-xs text-gray-500">Loading older messages…</span>
     </div>
   );
 }
@@ -323,7 +323,7 @@ export function Chat({
               onClick={scrollToBottom}
               className="rounded-full bg-gray-800/90 border border-gray-700 px-2.5 py-0.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors shadow-md backdrop-blur-sm"
             >
-              \u2193 Latest
+              ↓ Latest
             </button>
           </div>
         )}
@@ -346,7 +346,7 @@ export function Chat({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message\u2026"
+            placeholder="Type a message…"
             disabled={isStreaming}
             rows={1}
             className="flex-1 resize-none overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
