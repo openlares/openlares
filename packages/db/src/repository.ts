@@ -114,6 +114,26 @@ export function getQueue(db: OpenlareDb, id: string) {
   return db.select().from(queues).where(eq(queues.id, id)).get();
 }
 
+export interface UpdateQueueInput {
+  description?: string | null;
+}
+
+export function updateQueue(
+  db: OpenlareDb,
+  id: string,
+  input: UpdateQueueInput,
+): typeof queues.$inferSelect | null {
+  const existing = getQueue(db, id);
+  if (!existing) return null;
+
+  const updates: Partial<typeof queues.$inferInsert> = {
+    updatedAt: now(),
+  };
+  if (input.description !== undefined) updates.description = input.description;
+
+  return db.update(queues).set(updates).where(eq(queues.id, id)).returning().get() ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Transition operations
 // ---------------------------------------------------------------------------

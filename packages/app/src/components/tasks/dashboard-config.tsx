@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Dashboard, Queue, Transition } from './types';
 import { useToastStore } from '@/lib/toast-store';
 
@@ -30,6 +30,10 @@ export function DashboardConfig({
   const [newQueueOwner, setNewQueueOwner] = useState<Queue['ownerType']>('human');
   const [deletingQueueId, setDeletingQueueId] = useState<string | null>(null);
   const [deletingTransitionId, setDeletingTransitionId] = useState<string | null>(null);
+  const [newQueueDescription, setNewQueueDescription] = useState('');
+  const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null);
+  const [editingDescriptionValue, setEditingDescriptionValue] = useState('');
+  const descriptionInputRef = useRef<HTMLInputElement>(null);
   const [strictTransitions, setStrictTransitions] = useState(
     dashboard.config?.strictTransitions ?? false,
   );
@@ -64,6 +68,7 @@ export function DashboardConfig({
       if (res.ok) {
         await refetch();
         setNewQueueName('');
+        setNewQueueDescription('');
       } else {
         const errData = (await res.json()) as { error?: string };
         addToast('error', errData.error ?? 'Failed to add queue');
@@ -71,7 +76,15 @@ export function DashboardConfig({
     } catch {
       addToast('error', 'Network error — check your connection');
     }
-  }, [dashboard.id, newQueueName, newQueueOwner, queues.length, refetch, addToast]);
+  }, [
+    dashboard.id,
+    newQueueName,
+    newQueueOwner,
+    newQueueDescription,
+    queues.length,
+    refetch,
+    addToast,
+  ]);
 
   // Delete a queue (with confirmation)
   const handleDeleteQueue = useCallback(
@@ -138,6 +151,39 @@ export function DashboardConfig({
       }
     },
     [queues, dashboard.id, refetch, addToast],
+  );
+
+  // Start inline description edit
+  const handleStartEditDescription = useCallback((queue: Queue) => {
+    setEditingDescriptionId(queue.id);
+    setEditingDescriptionValue(queue.description ?? '');
+    setTimeout(() => descriptionInputRef.current?.focus(), 0);
+  }, []);
+
+  // Save inline description edit
+  const handleSaveDescription = useCallback(
+    async (queueId: string) => {
+      const newDesc = editingDescriptionValue.trim() || null;
+      setQueues((prev) => prev.map((q) => (q.id === queueId ? { ...q, description: newDesc } : q)));
+      setEditingDescriptionId(null);
+
+      try {
+        const res = await fetch(`/api/queues/${queueId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: newDesc }),
+        });
+        if (!res.ok) {
+          const errData = (await res.json()) as { error?: string };
+          addToast('error', errData.error ?? 'Failed to update description');
+          await refetch();
+        }
+      } catch {
+        addToast('error', 'Network error — check your connection');
+        await refetch();
+      }
+    },
+    [editingDescriptionValue, refetch, addToast],
   );
 
   // Add transition
@@ -230,110 +276,158 @@ export function DashboardConfig({
           <h4 className="mb-3 text-sm font-semibold text-slate-200">Queues (columns)</h4>
           <div className="mb-4 space-y-2">
             {sortedQueues.map((queue, idx) => (
-              <div
-                key={queue.id}
-                className="flex items-center gap-3 rounded-lg bg-slate-700/30 px-3 py-2"
-              >
-                {/* Reorder arrows */}
-                <div className="flex flex-col">
-                  <button
-                    onClick={() => void handleMoveQueue(idx, 'up')}
-                    disabled={idx === 0}
-                    className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
-                    title="Move up"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    onClick={() => void handleMoveQueue(idx, 'down')}
-                    disabled={idx === sortedQueues.length - 1}
-                    className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
-                    title="Move down"
-                  >
-                    ▼
-                  </button>
-                </div>
-
-                <span className="w-6 text-center text-xs text-slate-500">{idx + 1}</span>
-                <span className="flex-1 text-sm text-slate-200">{queue.name}</span>
-                <span
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                    queue.ownerType === 'human'
-                      ? 'bg-blue-500/20 text-blue-300'
-                      : 'bg-purple-500/20 text-purple-300'
-                  }`}
-                >
-                  {queue.ownerType === 'human' ? '👤 Human' : '🤖 Assistant'}
-                </span>
-                <span className="text-xs text-slate-500">
-                  limit: {queue.agentLimit === 0 ? '∞' : queue.agentLimit}
-                </span>
-
-                {/* Delete button with confirmation */}
-                {deletingQueueId === queue.id ? (
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-red-400">Delete?</span>
+              <div key={queue.id} className="rounded-lg bg-slate-700/30 px-3 py-2">
+                {/* Main row */}
+                <div className="flex items-center gap-3">
+                  {/* Reorder arrows */}
+                  <div className="flex flex-col">
                     <button
-                      onClick={() => void handleDeleteQueue(queue.id)}
-                      className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/40"
+                      onClick={() => void handleMoveQueue(idx, 'up')}
+                      disabled={idx === 0}
+                      className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
+                      title="Move up"
                     >
-                      Yes
+                      ▲
                     </button>
                     <button
-                      onClick={() => setDeletingQueueId(null)}
-                      className="rounded bg-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-500"
+                      onClick={() => void handleMoveQueue(idx, 'down')}
+                      disabled={idx === sortedQueues.length - 1}
+                      className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
+                      title="Move down"
                     >
-                      No
+                      ▼
                     </button>
                   </div>
-                ) : (
-                  <button
-                    onClick={() => setDeletingQueueId(queue.id)}
-                    title="Delete queue"
-                    className="text-slate-500 hover:text-red-400"
+
+                  <span className="w-6 text-center text-xs text-slate-500">{idx + 1}</span>
+                  <span className="flex-1 text-sm text-slate-200">{queue.name}</span>
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                      queue.ownerType === 'human'
+                        ? 'bg-blue-500/20 text-blue-300'
+                        : 'bg-purple-500/20 text-purple-300'
+                    }`}
                   >
-                    🗑️
-                  </button>
-                )}
+                    {queue.ownerType === 'human' ? '👤 Human' : '🤖 Assistant'}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    limit: {queue.agentLimit === 0 ? '∞' : queue.agentLimit}
+                  </span>
+
+                  {/* Delete button with confirmation */}
+                  {deletingQueueId === queue.id ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-red-400">Delete?</span>
+                      <button
+                        onClick={() => void handleDeleteQueue(queue.id)}
+                        className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/40"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setDeletingQueueId(null)}
+                        className="rounded bg-slate-600 px-1.5 py-0.5 text-xs text-slate-300 hover:bg-slate-500"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeletingQueueId(queue.id)}
+                      title="Delete queue"
+                      className="text-slate-500 hover:text-red-400"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
+
+                {/* Description row */}
+                <div className="ml-[3.25rem] mt-1">
+                  {editingDescriptionId === queue.id ? (
+                    <input
+                      ref={descriptionInputRef}
+                      value={editingDescriptionValue}
+                      onChange={(e) => setEditingDescriptionValue(e.target.value)}
+                      onBlur={() => void handleSaveDescription(queue.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleSaveDescription(queue.id);
+                        if (e.key === 'Escape') {
+                          setEditingDescriptionId(null);
+                          setEditingDescriptionValue('');
+                        }
+                      }}
+                      placeholder="Add a description…"
+                      className="w-full rounded bg-slate-700/50 px-2 py-1 text-xs text-slate-300 placeholder-slate-600 outline-none ring-1 ring-cyan-400/50 focus:ring-cyan-400"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => handleStartEditDescription(queue)}
+                      className="group flex items-center gap-1 text-left"
+                      title="Edit description"
+                    >
+                      {queue.description ? (
+                        <span className="text-xs text-slate-400 group-hover:text-slate-300">
+                          {queue.description}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-600 group-hover:text-slate-500">
+                          Add description…
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-600 opacity-0 group-hover:opacity-100">
+                        ✎
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
 
           {/* Add queue */}
-          <div className="mb-6 flex items-end gap-2">
-            <div className="flex-1">
-              <label className="mb-1 block text-xs text-slate-400">New queue name</label>
-              <input
-                value={newQueueName}
-                onChange={(e) => setNewQueueName(e.target.value)}
-                placeholder="e.g. Review, Testing, QA..."
-                className="w-full rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleAddQueue();
-                }}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">Owner</label>
-              <select
-                value={newQueueOwner}
-                onChange={(e) => setNewQueueOwner(e.target.value as Queue['ownerType'])}
-                className="rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600"
+          <div className="mb-6 space-y-2">
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="mb-1 block text-xs text-slate-400">New queue name</label>
+                <input
+                  value={newQueueName}
+                  onChange={(e) => setNewQueueName(e.target.value)}
+                  placeholder="e.g. Review, Testing, QA..."
+                  className="w-full rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleAddQueue();
+                  }}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Owner</label>
+                <select
+                  value={newQueueOwner}
+                  onChange={(e) => setNewQueueOwner(e.target.value as Queue['ownerType'])}
+                  className="rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600"
+                >
+                  {ownerOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.icon} {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={() => void handleAddQueue()}
+                disabled={!newQueueName.trim()}
+                className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
               >
-                {ownerOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.icon} {opt.label}
-                  </option>
-                ))}
-              </select>
+                Add
+              </button>
             </div>
-            <button
-              onClick={() => void handleAddQueue()}
-              disabled={!newQueueName.trim()}
-              className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
-            >
-              Add
-            </button>
+            <input
+              value={newQueueDescription}
+              onChange={(e) => setNewQueueDescription(e.target.value)}
+              placeholder="Description (optional)…"
+              className="w-full rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-400 placeholder-slate-600 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+            />
           </div>
 
           {/* Strict Transitions toggle */}
