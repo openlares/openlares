@@ -6,3 +6,27 @@ body {
   height: 100%;
   overflow: hidden;
 }
+
+/* Thin scrollbar — app-wide */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent; /* slate-600 thumb, transparent track */
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #475569; /* slate-600 */
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b; /* slate-500 */
+}
