@@ -37,22 +37,26 @@ export function createDb(filepath: string): OpenlareDb {
  */
 function ensureTables(sqlite: Database.Database): void {
   sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS dashboards (
+    CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       config TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      last_accessed_at INTEGER,
+      system_prompt TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS queues (
       id TEXT PRIMARY KEY,
-      dashboard_id TEXT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       owner_type TEXT NOT NULL CHECK(owner_type IN ('human', 'assistant')),
       description TEXT,
       position INTEGER NOT NULL DEFAULT 0,
       agent_limit INTEGER NOT NULL DEFAULT 1,
+      system_prompt TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -69,7 +73,7 @@ function ensureTables(sqlite: Database.Database): void {
 
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
-      dashboard_id TEXT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       queue_id TEXT NOT NULL REFERENCES queues(id),
       title TEXT NOT NULL,
       description TEXT,
@@ -80,6 +84,19 @@ function ensureTables(sqlite: Database.Database): void {
       error_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS project_agents (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      agent_id TEXT NOT NULL,
+      PRIMARY KEY (project_id, agent_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS queue_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      queues_json TEXT,
+      created_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS task_comments (
@@ -112,10 +129,11 @@ function ensureTables(sqlite: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_tasks_queue ON tasks(queue_id);
-    CREATE INDEX IF NOT EXISTS idx_tasks_dashboard ON tasks(dashboard_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_task_history_task ON task_history(task_id);
     CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id);
     CREATE INDEX IF NOT EXISTS idx_attachments_task ON attachments(task_id);
-    CREATE INDEX IF NOT EXISTS idx_queues_dashboard ON queues(dashboard_id);
+    CREATE INDEX IF NOT EXISTS idx_queues_project ON queues(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_agents_project ON project_agents(project_id);
   `);
 }
