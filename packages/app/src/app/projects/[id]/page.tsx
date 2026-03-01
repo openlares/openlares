@@ -12,9 +12,10 @@ import type { Project, Queue, Task, Transition } from '@/components/tasks/types'
 
 export const dynamic = 'force-dynamic';
 
-export default function ProjectPage({ params }: { params: { id: string } }) {
+export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const db = getDb();
-  const rawProject = getProject(db, params.id);
+  const rawProject = getProject(db, id);
 
   if (!rawProject) {
     notFound();
