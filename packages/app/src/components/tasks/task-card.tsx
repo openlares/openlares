@@ -74,9 +74,19 @@ export function TaskCard({ task, onSelect }: TaskCardProps) {
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {task.priority > 0 && (
+        {task.priority === 1 && (
+          <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-300">
+            P1
+          </span>
+        )}
+        {task.priority === 2 && (
           <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
-            P{task.priority}
+            P2
+          </span>
+        )}
+        {task.priority === 3 && (
+          <span className="rounded bg-slate-500/30 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+            P3
           </span>
         )}
         {task.assignedAgent && (
