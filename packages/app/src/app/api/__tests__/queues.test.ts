@@ -18,7 +18,7 @@ import {
   GET as listQueuesRoute,
   POST as createQueueRoute,
   PATCH as reorderQueuesRoute,
-} from '../dashboards/[id]/queues/route';
+} from '../projects/[id]/queues/route';
 import { DELETE as deleteQueueRoute } from '../queues/[id]/route';
 
 let projectId: string;

@@ -17,7 +17,7 @@ vi.mock('@/lib/task-events', () => ({ emit: vi.fn() }));
 import {
   GET as listTransitionsRoute,
   POST as createTransitionRoute,
-} from '../dashboards/[id]/transitions/route';
+} from '../projects/[id]/transitions/route';
 import { DELETE as deleteTransitionRoute } from '../transitions/[id]/route';
 
 let projectId: string;
