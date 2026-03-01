@@ -1,12 +1,5 @@
 import { vi, beforeEach, describe, it, expect } from 'vitest';
-import {
-  createDb,
-  seedDefaultProject,
-  listProjects,
-  listQueues,
-  listTransitions,
-  createTransition,
-} from '@openlares/db';
+import { createDb, seedDefaultProject, listQueues, listTransitions } from '@openlares/db';
 import type { OpenlareDb } from '@openlares/db';
 
 // --- DB mock ---
@@ -17,12 +10,12 @@ vi.mock('@/lib/task-events', () => ({ emit: vi.fn() }));
 import {
   GET as listTransitionsRoute,
   POST as createTransitionRoute,
-} from '../dashboards/[id]/transitions/route';
+} from '../projects/[id]/transitions/route';
 import { DELETE as deleteTransitionRoute } from '../transitions/[id]/route';
 
 let projectId: string;
 let todoQueueId: string;
-let inProgressQueueId: string;
+let _inProgressQueueId: string;
 let doneQueueId: string;
 
 beforeEach(() => {
@@ -31,7 +24,7 @@ beforeEach(() => {
   projectId = dashboard.id;
   const queues = listQueues(testDb, projectId);
   todoQueueId = queues.find((q) => q.name === 'Todo')!.id;
-  inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
+  _inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
   doneQueueId = queues.find((q) => q.name === 'Done')!.id;
 });
 

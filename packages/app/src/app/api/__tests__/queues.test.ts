@@ -1,12 +1,5 @@
 import { vi, beforeEach, describe, it, expect } from 'vitest';
-import {
-  createDb,
-  seedDefaultProject,
-  listProjects,
-  listQueues,
-  createTask,
-  createQueue,
-} from '@openlares/db';
+import { createDb, seedDefaultProject, listQueues, createTask, createQueue } from '@openlares/db';
 import type { OpenlareDb } from '@openlares/db';
 
 // --- DB mock ---
@@ -18,12 +11,12 @@ import {
   GET as listQueuesRoute,
   POST as createQueueRoute,
   PATCH as reorderQueuesRoute,
-} from '../dashboards/[id]/queues/route';
+} from '../projects/[id]/queues/route';
 import { DELETE as deleteQueueRoute } from '../queues/[id]/route';
 
 let projectId: string;
 let todoQueueId: string;
-let inProgressQueueId: string;
+let _inProgressQueueId: string;
 
 beforeEach(() => {
   testDb = createDb(':memory:');
@@ -31,7 +24,7 @@ beforeEach(() => {
   projectId = dashboard.id;
   const queues = listQueues(testDb, projectId);
   todoQueueId = queues.find((q) => q.name === 'Todo')!.id;
-  inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
+  _inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
 });
 
 // ---------------------------------------------------------------------------

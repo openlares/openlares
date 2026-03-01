@@ -1,12 +1,5 @@
 import { vi, beforeEach, describe, it, expect } from 'vitest';
-import {
-  createDb,
-  seedDefaultProject,
-  listProjects,
-  listQueues,
-  createTask,
-  setTaskError,
-} from '@openlares/db';
+import { createDb, seedDefaultProject, listQueues, createTask, setTaskError } from '@openlares/db';
 import type { OpenlareDb } from '@openlares/db';
 
 // --- DB mock ---
@@ -14,7 +7,7 @@ let testDb: OpenlareDb;
 vi.mock('@/lib/db', () => ({ getDb: () => testDb }));
 vi.mock('@/lib/task-events', () => ({ emit: vi.fn() }));
 
-import { GET as listTasksRoute, POST as createTaskRoute } from '../dashboards/[id]/tasks/route';
+import { GET as listTasksRoute, POST as createTaskRoute } from '../projects/[id]/tasks/route';
 import {
   GET as getTaskRoute,
   PATCH as patchTaskRoute,

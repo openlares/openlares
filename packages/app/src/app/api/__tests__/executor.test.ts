@@ -9,7 +9,7 @@ const mockStatus = {
 };
 vi.mock('@/lib/task-executor', () => ({
   getExecutorStatus: vi.fn(() => ({ ...mockStatus })),
-  startExecutor: vi.fn((projectId: string) => {
+  startExecutor: vi.fn((_projectId: string) => {
     mockStatus.running = true;
   }),
   stopExecutor: vi.fn(() => {
