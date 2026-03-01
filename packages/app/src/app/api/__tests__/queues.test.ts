@@ -177,3 +177,45 @@ describe('DELETE /api/queues/[id]', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PATCH /api/queues/[id] (update description)
+// ---------------------------------------------------------------------------
+import { PATCH as updateQueueRoute } from '../queues/[id]/route';
+
+describe('PATCH /api/queues/[id]', () => {
+  it('updates the description of a queue', async () => {
+    const req = new Request(`http://localhost/api/queues/${todoQueueId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description: 'Tasks waiting to be picked up' }),
+    });
+    const res = await updateQueueRoute(req, { params: Promise.resolve({ id: todoQueueId }) });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty('description', 'Tasks waiting to be picked up');
+    expect(data).toHaveProperty('id', todoQueueId);
+  });
+
+  it('clears description when null is passed', async () => {
+    const req = new Request(`http://localhost/api/queues/${todoQueueId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description: null }),
+    });
+    const res = await updateQueueRoute(req, { params: Promise.resolve({ id: todoQueueId }) });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.description).toBeNull();
+  });
+
+  it('returns 404 for unknown queue', async () => {
+    const req = new Request('http://localhost/api/queues/no-such', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description: 'test' }),
+    });
+    const res = await updateQueueRoute(req, { params: Promise.resolve({ id: 'no-such' }) });
+    expect(res.status).toBe(404);
+  });
+});
