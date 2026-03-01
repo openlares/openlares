@@ -11,6 +11,8 @@ interface TaskDetailProps {
   onClose: () => void;
   onUpdate: (task: Task) => void;
   onDelete: (taskId: string) => void;
+  /** Increment to force a comment re-fetch (e.g. from SSE task:comment event) */
+  refreshKey?: number;
 }
 
 export function TaskDetail({
@@ -20,6 +22,7 @@ export function TaskDetail({
   onClose,
   onUpdate,
   onDelete,
+  refreshKey = 0,
 }: TaskDetailProps) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? '');
@@ -88,7 +91,7 @@ export function TaskDetail({
     return () => {
       cancelled = true;
     };
-  }, [task.id]);
+  }, [task.id, refreshKey]);
 
   // Scroll to bottom when comments load
   useEffect(() => {
