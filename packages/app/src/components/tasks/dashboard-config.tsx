@@ -61,6 +61,7 @@ export function ProjectConfig({
         body: JSON.stringify({
           name: newQueueName.trim(),
           ownerType: newQueueOwner,
+          description: newQueueDescription.trim() || undefined,
           position: queues.length,
         }),
       });
