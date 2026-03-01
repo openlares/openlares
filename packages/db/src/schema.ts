@@ -5,25 +5,28 @@
  * Tasks move between queues according to transition rules.
  */
 
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
 
 // ---------------------------------------------------------------------------
-// Dashboards (boards / projects)
+// Projects (boards / projects)
 // ---------------------------------------------------------------------------
 
-export const dashboards = sqliteTable('dashboards', {
+export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   /** Global config (JSON): agent concurrency limits, etc. */
-  config: text('config', { mode: 'json' }).$type<DashboardConfig>(),
+  config: text('config', { mode: 'json' }).$type<ProjectConfig>(),
+  pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
+  lastAccessedAt: integer('last_accessed_at', { mode: 'timestamp_ms' }),
+  systemPrompt: text('system_prompt'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
-export interface DashboardConfig {
+export interface ProjectConfig {
   /** When true, only transitions defined in the transitions table are allowed. Default: false (free movement). */
   strictTransitions?: boolean;
-  /** Max concurrent agent tasks across the entire dashboard. */
+  /** Max concurrent agent tasks across the entire project. */
   maxConcurrentAgents?: number;
 }
 
@@ -33,9 +36,9 @@ export interface DashboardConfig {
 
 export const queues = sqliteTable('queues', {
   id: text('id').primaryKey(),
-  dashboardId: text('dashboard_id')
+  projectId: text('project_id')
     .notNull()
-    .references(() => dashboards.id, { onDelete: 'cascade' }),
+    .references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   /** Who acts on tasks in this queue. */
   ownerType: text('owner_type', { enum: ['human', 'assistant'] }).notNull(),
@@ -44,6 +47,7 @@ export const queues = sqliteTable('queues', {
   position: integer('position').notNull().default(0),
   /** Max concurrent agents working on tasks in this queue (0 = unlimited). */
   agentLimit: integer('agent_limit').notNull().default(1),
+  systemPrompt: text('system_prompt'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
@@ -80,9 +84,9 @@ export interface TransitionConditions {
 
 export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),
-  dashboardId: text('dashboard_id')
+  projectId: text('project_id')
     .notNull()
-    .references(() => dashboards.id, { onDelete: 'cascade' }),
+    .references(() => projects.id, { onDelete: 'cascade' }),
   queueId: text('queue_id')
     .notNull()
     .references(() => queues.id),
@@ -101,6 +105,41 @@ export const tasks = sqliteTable('tasks', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Project Agents (agents assigned to a project)
+// ---------------------------------------------------------------------------
+
+export const projectAgents = sqliteTable(
+  'project_agents',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.projectId, table.agentId] }),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Queue Templates
+// ---------------------------------------------------------------------------
+
+export const queueTemplates = sqliteTable('queue_templates', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  queuesJson: text('queues_json', { mode: 'json' }).$type<QueueTemplateEntry[]>(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export interface QueueTemplateEntry {
+  name: string;
+  ownerType: 'human' | 'assistant';
+  description?: string;
+  agentLimit?: number;
+}
 
 // ---------------------------------------------------------------------------
 // Task Comments (conversation thread per task)
