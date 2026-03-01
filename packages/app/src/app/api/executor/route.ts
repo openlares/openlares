@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   switch (body.action) {
     case 'start': {
       if (!body.projectId) {
-        return NextResponse.json({ error: 'dashboardId is required' }, { status: 400 });
+        return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
       }
 
       // Configure gateway if provided

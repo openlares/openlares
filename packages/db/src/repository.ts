@@ -543,6 +543,52 @@ export function getTaskHistory(db: OpenlareDb, taskId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Create project with defaults
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new project with a default Todo → In Progress → Done pipeline.
+ * Unlike seedDefaultProject(), this always creates a fresh project and does
+ * not check for existing ones — it is the reusable variant for the API.
+ */
+export function createProjectWithDefaults(
+  db: OpenlareDb,
+  input: CreateProjectInput,
+): { project: typeof projects.$inferSelect; queues: Array<typeof queues.$inferSelect> } {
+  const project = createProject(db, input);
+
+  const todo = createQueue(db, {
+    projectId: project.id,
+    name: 'Todo',
+    ownerType: 'human',
+    description: 'Tasks waiting to be picked up',
+    position: 0,
+  });
+
+  const inProgress = createQueue(db, {
+    projectId: project.id,
+    name: 'In Progress',
+    ownerType: 'assistant',
+    description: 'Tasks being worked on by the agent',
+    position: 1,
+  });
+
+  const done = createQueue(db, {
+    projectId: project.id,
+    name: 'Done',
+    ownerType: 'human',
+    description: 'Completed tasks',
+    position: 2,
+  });
+
+  // Transitions: todo → inProgress (human), inProgress → done (assistant)
+  createTransition(db, { fromQueueId: todo.id, toQueueId: inProgress.id, actorType: 'human' });
+  createTransition(db, { fromQueueId: inProgress.id, toQueueId: done.id, actorType: 'assistant' });
+
+  return { project, queues: [todo, inProgress, done] };
+}
+
+// ---------------------------------------------------------------------------
 // Seed default project
 // ---------------------------------------------------------------------------
 

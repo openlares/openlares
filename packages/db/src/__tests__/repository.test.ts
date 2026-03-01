@@ -37,6 +37,7 @@ import {
   listQueueTemplates,
   deleteQueueTemplate,
   createProjectFromTemplate,
+  createProjectWithDefaults,
 } from '../repository';
 import type { OpenlareDb } from '../client';
 
@@ -861,5 +862,70 @@ describe('getNextClaimableTask with agent filtering', () => {
     // No agentId passed — should skip restriction check
     const next = getNextClaimableTask(db, projectId);
     expect(next?.title).toBe('Compat task');
+  });
+});
+
+describe('createProjectWithDefaults', () => {
+  let db: OpenlareDb;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  it('creates a project with 3 default queues', () => {
+    const result = createProjectWithDefaults(db, { name: 'My Project' });
+    expect(result.project.name).toBe('My Project');
+    expect(result.project.id).toBeTruthy();
+    expect(result.queues).toHaveLength(3);
+  });
+
+  it('creates queues with correct names', () => {
+    const { queues } = createProjectWithDefaults(db, { name: 'Test' });
+    expect(queues.map((q) => q.name)).toEqual(['Todo', 'In Progress', 'Done']);
+  });
+
+  it('creates queues with correct ownerTypes', () => {
+    const { queues } = createProjectWithDefaults(db, { name: 'Test' });
+    expect(queues.map((q) => q.ownerType)).toEqual(['human', 'assistant', 'human']);
+  });
+
+  it('creates queues with correct descriptions', () => {
+    const { queues } = createProjectWithDefaults(db, { name: 'Test' });
+    expect(queues[0]!.description).toBe('Tasks waiting to be picked up');
+    expect(queues[1]!.description).toBe('Tasks being worked on by the agent');
+    expect(queues[2]!.description).toBe('Completed tasks');
+  });
+
+  it('creates queues with correct positions', () => {
+    const { queues } = createProjectWithDefaults(db, { name: 'Test' });
+    expect(queues.map((q) => q.position)).toEqual([0, 1, 2]);
+  });
+
+  it('creates 2 transitions: todo→inProgress (human) and inProgress→done (assistant)', () => {
+    const { project, queues } = createProjectWithDefaults(db, { name: 'Test' });
+    const [todo, inProgress, done] = queues as [
+      (typeof queues)[0],
+      (typeof queues)[0],
+      (typeof queues)[0],
+    ];
+    const ts = listTransitions(db, project.id);
+    expect(ts).toHaveLength(2);
+
+    const todoToInProgress = ts.find(
+      (t) => t.fromQueueId === todo.id && t.toQueueId === inProgress.id,
+    );
+    expect(todoToInProgress).toBeDefined();
+    expect(todoToInProgress!.actorType).toBe('human');
+
+    const inProgressToDone = ts.find(
+      (t) => t.fromQueueId === inProgress.id && t.toQueueId === done.id,
+    );
+    expect(inProgressToDone).toBeDefined();
+    expect(inProgressToDone!.actorType).toBe('assistant');
+  });
+
+  it('queues belong to the created project', () => {
+    const { project, queues } = createProjectWithDefaults(db, { name: 'Test' });
+    expect(queues.every((q) => q.projectId === project.id)).toBe(true);
   });
 });
