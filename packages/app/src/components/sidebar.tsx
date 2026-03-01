@@ -7,7 +7,7 @@ import { useGatewayStore } from '@openlares/api-client';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/' },
-  { label: 'Tasks', href: '/tasks' },
+  { label: 'Projects', href: '/projects' },
   { label: 'Settings', href: '/settings' },
 ];
 
@@ -23,7 +23,10 @@ export function Sidebar() {
 
       <nav className="flex flex-col gap-2 text-sm text-gray-400">
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive =
+            item.href === '/'
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(item.href + '/');
           return (
             <Link
               key={item.href}
