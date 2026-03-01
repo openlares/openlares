@@ -1,12 +1,5 @@
 import { vi, beforeEach, describe, it, expect } from 'vitest';
-import {
-  createDb,
-  seedDefaultProject,
-  listProjects,
-  listQueues,
-  createTask,
-  createQueue,
-} from '@openlares/db';
+import { createDb, seedDefaultProject, listQueues, createTask, createQueue } from '@openlares/db';
 import type { OpenlareDb } from '@openlares/db';
 
 // --- DB mock ---
@@ -18,7 +11,7 @@ import {
   GET as listQueuesRoute,
   POST as createQueueRoute,
   PATCH as reorderQueuesRoute,
-} from '../dashboards/[id]/queues/route';
+} from '../projects/[id]/queues/route';
 import { DELETE as deleteQueueRoute } from '../queues/[id]/route';
 
 let projectId: string;

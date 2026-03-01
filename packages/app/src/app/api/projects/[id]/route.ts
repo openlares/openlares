@@ -5,9 +5,9 @@ import { getProject, updateProject } from '@openlares/db';
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  const dashboard = getProject(db, id);
-  if (!dashboard) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  return NextResponse.json(dashboard);
+  const project = getProject(db, id);
+  if (!project) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  return NextResponse.json(project);
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -21,6 +21,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       body.config != null
         ? (body.config as Parameters<typeof updateProject>[2]['config'])
         : undefined,
+    pinned: typeof body.pinned === 'boolean' ? body.pinned : undefined,
   });
 
   if (!updated) return NextResponse.json({ error: 'not found' }, { status: 404 });
