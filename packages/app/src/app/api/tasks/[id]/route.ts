@@ -15,7 +15,7 @@ import type { Task } from '@/components/tasks/types';
 /** Convert Drizzle task row (Date fields) to client-safe JSON (number ms). */
 function serializeTask(raw: {
   id: string;
-  dashboardId: string;
+  projectId: string;
   queueId: string;
   title: string;
   description: string | null;

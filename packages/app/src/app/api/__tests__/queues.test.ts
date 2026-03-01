@@ -1,8 +1,8 @@
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import {
   createDb,
-  seedDefaultDashboard,
-  listDashboards,
+  seedDefaultProject,
+  listProjects,
   listQueues,
   createTask,
   createQueue,
@@ -21,15 +21,15 @@ import {
 } from '../dashboards/[id]/queues/route';
 import { DELETE as deleteQueueRoute } from '../queues/[id]/route';
 
-let dashboardId: string;
+let projectId: string;
 let todoQueueId: string;
 let inProgressQueueId: string;
 
 beforeEach(() => {
   testDb = createDb(':memory:');
-  const dashboard = seedDefaultDashboard(testDb)!;
-  dashboardId = dashboard.id;
-  const queues = listQueues(testDb, dashboardId);
+  const dashboard = seedDefaultProject(testDb)!;
+  projectId = dashboard.id;
+  const queues = listQueues(testDb, projectId);
   todoQueueId = queues.find((q) => q.name === 'Todo')!.id;
   inProgressQueueId = queues.find((q) => q.name === 'In Progress')!.id;
 });
@@ -39,8 +39,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe('GET /api/dashboards/[id]/queues', () => {
   it('returns queues and transitions for the dashboard', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/queues`);
-    const res = await listQueuesRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/queues`);
+    const res = await listQueuesRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toHaveProperty('queues');
@@ -51,8 +51,8 @@ describe('GET /api/dashboards/[id]/queues', () => {
   });
 
   it('queues have expected fields', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/queues`);
-    const res = await listQueuesRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/queues`);
+    const res = await listQueuesRoute(req, { params: Promise.resolve({ id: projectId }) });
     const data = await res.json();
     const queue = data.queues[0];
     expect(queue).toHaveProperty('id');
@@ -67,12 +67,12 @@ describe('GET /api/dashboards/[id]/queues', () => {
 // ---------------------------------------------------------------------------
 describe('POST /api/dashboards/[id]/queues', () => {
   it('creates a new queue with 201 status', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/queues`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/queues`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Review', ownerType: 'human', position: 3 }),
     });
-    const res = await createQueueRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createQueueRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(201);
     const data = await res.json();
     expect(data).toHaveProperty('name', 'Review');
@@ -80,22 +80,22 @@ describe('POST /api/dashboards/[id]/queues', () => {
   });
 
   it('returns 400 when name is missing', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/queues`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/queues`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ownerType: 'human' }),
     });
-    const res = await createQueueRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createQueueRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when ownerType is missing', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/queues`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/queues`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Orphan' }),
     });
-    const res = await createQueueRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await createQueueRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(400);
   });
 });
@@ -105,26 +105,26 @@ describe('POST /api/dashboards/[id]/queues', () => {
 // ---------------------------------------------------------------------------
 describe('PATCH /api/dashboards/[id]/queues', () => {
   it('reorders queues successfully', async () => {
-    const queues = listQueues(testDb, dashboardId);
+    const queues = listQueues(testDb, projectId);
     const positions = queues.map((q, i) => ({ id: q.id, position: queues.length - 1 - i }));
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/queues`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/queues`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ positions }),
     });
-    const res = await reorderQueuesRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await reorderQueuesRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toHaveProperty('ok', true);
   });
 
   it('returns 400 when positions array is missing', async () => {
-    const req = new Request(`http://localhost/api/dashboards/${dashboardId}/queues`, {
+    const req = new Request(`http://localhost/api/dashboards/${projectId}/queues`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ positions: 'bad' }),
     });
-    const res = await reorderQueuesRoute(req, { params: Promise.resolve({ id: dashboardId }) });
+    const res = await reorderQueuesRoute(req, { params: Promise.resolve({ id: projectId }) });
     expect(res.status).toBe(400);
   });
 });
@@ -136,7 +136,7 @@ describe('DELETE /api/queues/[id]', () => {
   it('deletes a non-last queue that has no tasks', async () => {
     // Create a 4th queue so "Todo" is not the last one if we delete another
     const extra = createQueue(testDb, {
-      dashboardId,
+      projectId,
       name: 'Extra',
       ownerType: 'human',
       position: 10,
@@ -156,7 +156,7 @@ describe('DELETE /api/queues/[id]', () => {
 
   it('returns 400 when queue has tasks', async () => {
     // Put a task in the Todo queue
-    createTask(testDb, { dashboardId, queueId: todoQueueId, title: 'Blocking task' });
+    createTask(testDb, { projectId, queueId: todoQueueId, title: 'Blocking task' });
     const req = new Request(`http://localhost/api/queues/${todoQueueId}`, { method: 'DELETE' });
     const res = await deleteQueueRoute(req, { params: Promise.resolve({ id: todoQueueId }) });
     expect(res.status).toBe(400);
@@ -164,10 +164,10 @@ describe('DELETE /api/queues/[id]', () => {
 
   it('returns 400 when trying to delete the last queue', async () => {
     // Create fresh dashboard with only one queue
-    const { createDashboard } = await import('@openlares/db');
-    const solo = createDashboard(testDb, { name: 'Solo' });
+    const { createProject } = await import('@openlares/db');
+    const solo = createProject(testDb, { name: 'Solo' });
     const onlyQueue = createQueue(testDb, {
-      dashboardId: solo.id,
+      projectId: solo.id,
       name: 'Only',
       ownerType: 'human',
       position: 0,

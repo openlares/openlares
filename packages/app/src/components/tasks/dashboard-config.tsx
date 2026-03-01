@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { Dashboard, Queue, Transition } from './types';
 import { useToastStore } from '@/lib/toast-store';
 
-interface DashboardConfigProps {
+interface ProjectConfigProps {
   dashboard: Dashboard;
   queues: Queue[];
   transitions: Transition[];
@@ -17,13 +17,13 @@ const ownerOptions: { value: Queue['ownerType']; label: string; icon: string }[]
   { value: 'assistant', label: 'Assistant', icon: '🤖' },
 ];
 
-export function DashboardConfig({
+export function ProjectConfig({
   dashboard,
   queues: initialQueues,
   transitions: initialTransitions,
   onClose,
   onQueuesChange,
-}: DashboardConfigProps) {
+}: ProjectConfigProps) {
   const [queues, setQueues] = useState(initialQueues);
   const [transitions, setTransitions] = useState(initialTransitions);
   const [newQueueName, setNewQueueName] = useState('');

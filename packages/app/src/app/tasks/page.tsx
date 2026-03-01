@@ -1,5 +1,5 @@
 import { getDb } from '@/lib/db';
-import { listDashboards, listQueues, listDashboardTasks, listTransitions } from '@openlares/db';
+import { listProjects, listQueues, listProjectTasks, listTransitions } from '@openlares/db';
 import { KanbanBoard } from '@/components/tasks/kanban-board';
 import type { Dashboard, Queue, Task, Transition } from '@/components/tasks/types';
 
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export default function TasksPage() {
   const db = getDb();
-  const dashboards = listDashboards(db);
+  const dashboards = listProjects(db);
 
   if (dashboards.length === 0) {
     return (
@@ -22,7 +22,7 @@ export default function TasksPage() {
   // For MVP: use the first dashboard
   const rawDashboard = dashboards[0]!;
   const rawQueues = listQueues(db, rawDashboard.id);
-  const rawTasks = listDashboardTasks(db, rawDashboard.id);
+  const rawTasks = listProjectTasks(db, rawDashboard.id);
   const rawTransitions = listTransitions(db, rawDashboard.id);
 
   // Serialize dates to numbers for client components

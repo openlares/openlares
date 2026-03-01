@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { listDashboards, createDashboard } from '@openlares/db';
+import { listProjects, createProject } from '@openlares/db';
 
 export async function GET() {
   const db = getDb();
-  return NextResponse.json(listDashboards(db));
+  return NextResponse.json(listProjects(db));
 }
 
 export async function POST(request: Request) {
@@ -13,6 +13,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 });
   }
   const db = getDb();
-  const dashboard = createDashboard(db, { name: body.name });
+  const dashboard = createProject(db, { name: body.name });
   return NextResponse.json(dashboard, { status: 201 });
 }

@@ -10,7 +10,7 @@
 import { getDb } from './db';
 import { emit } from './task-events';
 import {
-  getDashboard,
+  getProject,
   getNextClaimableTask,
   claimTask,
   setTaskError,
@@ -87,7 +87,7 @@ export function getExecutorStatus() {
   };
 }
 
-export function startExecutor(dashboardId: string): void {
+export function startExecutor(projectId: string): void {
   // Clear any stale timers (HMR can kill setTimeout chains while globalThis state persists)
   if (state.pollTimer) {
     clearTimeout(state.pollTimer);
@@ -95,7 +95,7 @@ export function startExecutor(dashboardId: string): void {
   }
   state.running = true;
   emit({ type: 'executor:started', timestamp: Date.now() });
-  pollForWork(dashboardId);
+  pollForWork(projectId);
 }
 
 export function stopExecutor(): void {
@@ -115,17 +115,17 @@ export function stopExecutor(): void {
 // Poll loop — find and claim tasks
 // ---------------------------------------------------------------------------
 
-function pollForWork(dashboardId: string): void {
+function pollForWork(projectId: string): void {
   if (!state.running) return;
 
   // Don't poll if we're already working on something
   if (state.currentTaskId) {
-    state.pollTimer = setTimeout(() => pollForWork(dashboardId), POLL_INTERVAL_MS);
+    state.pollTimer = setTimeout(() => pollForWork(projectId), POLL_INTERVAL_MS);
     return;
   }
 
   const db = getDb();
-  const task = getNextClaimableTask(db, dashboardId);
+  const task = getNextClaimableTask(db, projectId);
 
   if (task) {
     const sessionKey = `openlares:task:${task.id}`;
@@ -137,11 +137,11 @@ function pollForWork(dashboardId: string): void {
       emit({ type: 'task:claimed', taskId: task.id, timestamp: Date.now() });
 
       // Fire and forget — dispatch async, don't await
-      void dispatchTask(db, claimed, sessionKey, dashboardId);
+      void dispatchTask(db, claimed, sessionKey, projectId);
     }
   }
 
-  state.pollTimer = setTimeout(() => pollForWork(dashboardId), POLL_INTERVAL_MS);
+  state.pollTimer = setTimeout(() => pollForWork(projectId), POLL_INTERVAL_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -192,20 +192,20 @@ async function dispatchTask(
     id: string;
     title: string;
     description: string | null;
-    dashboardId: string;
+    projectId: string;
     queueId: string;
   },
   sessionKey: string,
-  dashboardId: string,
+  projectId: string,
 ): Promise<void> {
   const taskId = task.id;
 
   try {
     if (!gatewayConfig) throw new Error('Gateway not configured');
 
-    const allQueues = listQueues(db, dashboardId);
+    const allQueues = listQueues(db, projectId);
     const currentQueue = allQueues.find((q) => q.id === task.queueId);
-    const dashboardTransitions = listTransitions(db, dashboardId);
+    const dashboardTransitions = listTransitions(db, projectId);
     const availableTransitions = dashboardTransitions.filter(
       (t) =>
         t.fromQueueId === task.queueId && (t.actorType === 'assistant' || t.actorType === 'both'),
@@ -311,7 +311,7 @@ async function dispatchTask(
     // Find target queue by name (case-insensitive)
     const targetQueue = allQueues.find((q) => q.name.toLowerCase() === targetName.toLowerCase());
 
-    const dashConfig = getDashboard(db, currentTask.dashboardId);
+    const dashConfig = getProject(db, currentTask.projectId);
     const strict = dashConfig?.config?.strictTransitions ?? false;
 
     // Fallback: DONE with no matching queue (used when no destinations configured)

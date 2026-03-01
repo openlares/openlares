@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { emit } from '@/lib/task-events';
-import { listDashboardTasks, createTask } from '@openlares/db';
+import { listProjectTasks, createTask } from '@openlares/db';
 import type { Task } from '@/components/tasks/types';
 
 /** Convert Drizzle task row (Date fields) to client-safe JSON (number ms). */
 function serializeTask(raw: {
   id: string;
-  dashboardId: string;
+  projectId: string;
   queueId: string;
   title: string;
   description: string | null;
@@ -30,7 +30,7 @@ function serializeTask(raw: {
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  return NextResponse.json(listDashboardTasks(db, id).map(serializeTask));
+  return NextResponse.json(listProjectTasks(db, id).map(serializeTask));
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -48,7 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const db = getDb();
   const task = createTask(db, {
-    dashboardId: id,
+    projectId: id,
     queueId: body.queueId,
     title: body.title,
     description: body.description,

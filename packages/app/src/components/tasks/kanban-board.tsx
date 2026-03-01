@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { QueueColumn } from './queue-column';
 import { TaskDetail } from './task-detail';
-import { DashboardConfig } from './dashboard-config';
+import { ProjectConfig } from './dashboard-config';
 import type { Dashboard, Queue, Task, Transition } from './types';
 import { loadGatewayConfig } from '@/lib/storage';
 import { useToastStore } from '@/lib/toast-store';
@@ -189,7 +189,7 @@ export function KanbanBoard({
                 const gw = loadGatewayConfig();
                 return {
                   action: 'start',
-                  dashboardId: dashboard.id,
+                  projectId: dashboard.id,
                   ...(gw
                     ? {
                         gatewayUrl: gw.url,
@@ -446,7 +446,7 @@ export function KanbanBoard({
 
       {/* Dashboard config modal */}
       {showConfig && (
-        <DashboardConfig
+        <ProjectConfig
           dashboard={dashboard}
           queues={queues}
           transitions={transitions}

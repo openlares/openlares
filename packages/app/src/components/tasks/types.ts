@@ -10,7 +10,7 @@ export interface Dashboard {
 
 export interface Queue {
   id: string;
-  dashboardId: string;
+  projectId: string;
   name: string;
   ownerType: 'human' | 'assistant';
   description: string | null;
@@ -32,7 +32,7 @@ export interface Transition {
 
 export interface Task {
   id: string;
-  dashboardId: string;
+  projectId: string;
   queueId: string;
   title: string;
   description: string | null;

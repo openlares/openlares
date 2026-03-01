@@ -6,7 +6,7 @@ import type { Queue, Transition } from '@/components/tasks/types';
 /** Serialize Drizzle queue row to client-safe JSON. */
 function serializeQueue(raw: {
   id: string;
-  dashboardId: string;
+  projectId: string;
   name: string;
   ownerType: 'human' | 'assistant';
   description: string | null;
@@ -67,7 +67,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const db = getDb();
   const queue = createQueue(db, {
-    dashboardId: id,
+    projectId: id,
     name: body.name,
     ownerType: body.ownerType,
     description: body.description,
