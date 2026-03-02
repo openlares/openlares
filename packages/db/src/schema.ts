@@ -19,6 +19,9 @@ export const projects = sqliteTable('projects', {
   pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
   lastAccessedAt: integer('last_accessed_at', { mode: 'timestamp_ms' }),
   systemPrompt: text('system_prompt'),
+  sessionMode: text('session_mode', { enum: ['per-task', 'agent-pool', 'any-free'] })
+    .notNull()
+    .default('per-task'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });

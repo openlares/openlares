@@ -27,6 +27,7 @@ export function createDb(filepath: string): OpenlareDb {
 
   // Bootstrap tables if they don't exist (push-based for simplicity)
   ensureTables(sqlite);
+  applyMigrations(sqlite);
 
   return db;
 }
@@ -44,6 +45,7 @@ function ensureTables(sqlite: Database.Database): void {
       pinned INTEGER NOT NULL DEFAULT 0,
       last_accessed_at INTEGER,
       system_prompt TEXT,
+      session_mode TEXT NOT NULL DEFAULT 'per-task',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -57,6 +59,7 @@ function ensureTables(sqlite: Database.Database): void {
       position INTEGER NOT NULL DEFAULT 0,
       agent_limit INTEGER NOT NULL DEFAULT 1,
       system_prompt TEXT,
+      session_mode TEXT NOT NULL DEFAULT 'per-task',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -136,4 +139,17 @@ function ensureTables(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_queues_project ON queues(project_id);
     CREATE INDEX IF NOT EXISTS idx_project_agents_project ON project_agents(project_id);
   `);
+}
+
+/**
+ * Apply schema migrations for new columns on existing databases.
+ * Safe to run on fresh DBs (no-ops if column already exists).
+ */
+function applyMigrations(sqlite: Database.Database): void {
+  // session_mode added in v2026-03-02
+  try {
+    sqlite.exec(`ALTER TABLE projects ADD COLUMN session_mode TEXT NOT NULL DEFAULT 'per-task'`);
+  } catch {
+    // Column already exists — safe to ignore
+  }
 }
