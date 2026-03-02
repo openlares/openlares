@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Dashboard, Queue, Transition } from './types';
+type SessionMode = 'per-task' | 'agent-pool' | 'any-free';
 import { useToastStore } from '@/lib/toast-store';
 
 interface QueueTemplate {
@@ -66,6 +67,9 @@ export function ProjectConfig({
 
   // Project system prompt
   const [projectSystemPrompt, setProjectSystemPrompt] = useState(dashboard.systemPrompt ?? '');
+  const [sessionMode, setSessionMode] = useState<SessionMode>(
+    (dashboard.sessionMode as SessionMode) ?? 'per-task',
+  );
 
   // Per-queue system prompts
   const [expandedSystemPromptId, setExpandedSystemPromptId] = useState<string | null>(null);
@@ -199,6 +203,28 @@ export function ProjectConfig({
       addToast('error', 'Network error — check your connection');
     }
   }, [projectSystemPrompt, projectId, addToast]);
+
+  const handleSessionModeChange = useCallback(
+    async (mode: SessionMode) => {
+      setSessionMode(mode);
+      try {
+        const res = await fetch(`/api/projects/${projectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionMode: mode }),
+        });
+        if (!res.ok) {
+          const errData = (await res.json()) as { error?: string };
+          addToast('error', errData.error ?? 'Failed to update session mode');
+          setSessionMode((dashboard.sessionMode as SessionMode) ?? 'per-task'); // revert
+        }
+      } catch {
+        addToast('error', 'Network error — check your connection');
+        setSessionMode((dashboard.sessionMode as SessionMode) ?? 'per-task'); // revert
+      }
+    },
+    [projectId, dashboard.sessionMode, addToast],
+  );
 
   // Per-queue system prompt
   const handleToggleQueueSystemPrompt = useCallback(
@@ -580,6 +606,22 @@ export function ProjectConfig({
                 Add
               </button>
             </div>
+          </div>
+
+          {/* Session mode */}
+          <div className="mb-5">
+            <label className="mb-1 block text-xs text-slate-400">
+              Session mode — how agent sessions are created for tasks
+            </label>
+            <select
+              value={sessionMode}
+              onChange={(e) => void handleSessionModeChange(e.target.value as SessionMode)}
+              className="rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+            >
+              <option value="per-task">New session per task (default)</option>
+              <option value="agent-pool">Reuse agent sessions</option>
+              <option value="any-free">Reuse any free session</option>
+            </select>
           </div>
 
           {/* Project system prompt */}

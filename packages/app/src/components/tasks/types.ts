@@ -7,6 +7,7 @@ export interface Project {
   pinned: boolean;
   lastAccessedAt: number | null;
   systemPrompt: string | null;
+  sessionMode: 'per-task' | 'agent-pool' | 'any-free';
   createdAt: number;
   updatedAt: number;
 }
