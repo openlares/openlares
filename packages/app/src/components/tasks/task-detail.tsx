@@ -209,7 +209,10 @@ export function TaskDetail({
           <div className="flex items-center gap-2">
             {queue && <span className="text-xs text-slate-500">in {queue.name}</span>}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+          <button
+            onClick={onClose}
+            className="rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-200"
+          >
             ✕
           </button>
         </div>
