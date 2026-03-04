@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Dashboard, Queue, Transition } from './types';
+type SessionMode = 'per-task' | 'agent-pool' | 'any-free';
 import { useToastStore } from '@/lib/toast-store';
 
 interface QueueTemplate {
@@ -66,6 +67,9 @@ export function ProjectConfig({
 
   // Project system prompt
   const [projectSystemPrompt, setProjectSystemPrompt] = useState(dashboard.systemPrompt ?? '');
+  const [sessionMode, setSessionMode] = useState<SessionMode>(
+    (dashboard.sessionMode as SessionMode) ?? 'per-task',
+  );
 
   // Per-queue system prompts
   const [expandedSystemPromptId, setExpandedSystemPromptId] = useState<string | null>(null);
@@ -199,6 +203,28 @@ export function ProjectConfig({
       addToast('error', 'Network error — check your connection');
     }
   }, [projectSystemPrompt, projectId, addToast]);
+
+  const handleSessionModeChange = useCallback(
+    async (mode: SessionMode) => {
+      setSessionMode(mode);
+      try {
+        const res = await fetch(`/api/projects/${projectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionMode: mode }),
+        });
+        if (!res.ok) {
+          const errData = (await res.json()) as { error?: string };
+          addToast('error', errData.error ?? 'Failed to update session mode');
+          setSessionMode((dashboard.sessionMode as SessionMode) ?? 'per-task'); // revert
+        }
+      } catch {
+        addToast('error', 'Network error — check your connection');
+        setSessionMode((dashboard.sessionMode as SessionMode) ?? 'per-task'); // revert
+      }
+    },
+    [projectId, dashboard.sessionMode, addToast],
+  );
 
   // Per-queue system prompt
   const handleToggleQueueSystemPrompt = useCallback(
@@ -508,7 +534,10 @@ export function ProjectConfig({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-700/50 px-5 py-3">
           <h3 className="text-lg font-semibold text-slate-100">Project Settings</h3>
-          <button onClick={onClose} className="cursor-pointer text-slate-400 hover:text-slate-200">
+          <button
+            onClick={onClose}
+            className="cursor-pointer rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-200"
+          >
             ✕
           </button>
         </div>
@@ -553,7 +582,7 @@ export function ProjectConfig({
                     {agentId}
                     <button
                       onClick={() => void handleRemoveAgent(agentId)}
-                      className="ml-0.5 text-slate-500 hover:text-red-400"
+                      className="ml-0.5 rounded p-0.5 text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
                       title={`Remove ${agentId}`}
                     >
                       ✕
@@ -580,6 +609,22 @@ export function ProjectConfig({
                 Add
               </button>
             </div>
+          </div>
+
+          {/* Session mode */}
+          <div className="mb-5">
+            <label className="mb-1 block text-xs text-slate-400">
+              Session mode — how agent sessions are created for tasks
+            </label>
+            <select
+              value={sessionMode}
+              onChange={(e) => void handleSessionModeChange(e.target.value as SessionMode)}
+              className="rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+            >
+              <option value="per-task">New session per task (default)</option>
+              <option value="agent-pool">Reuse agent sessions</option>
+              <option value="any-free">Reuse any free session</option>
+            </select>
           </div>
 
           {/* Project system prompt */}
@@ -609,7 +654,7 @@ export function ProjectConfig({
                     <button
                       onClick={() => void handleMoveQueue(idx, 'up')}
                       disabled={idx === 0}
-                      className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
+                      className="rounded p-0.5 text-slate-500 transition-colors hover:bg-slate-700/50 hover:text-slate-300 disabled:opacity-20"
                       title="Move up"
                     >
                       ▲
@@ -617,7 +662,7 @@ export function ProjectConfig({
                     <button
                       onClick={() => void handleMoveQueue(idx, 'down')}
                       disabled={idx === sortedQueues.length - 1}
-                      className="text-slate-500 hover:text-slate-300 disabled:opacity-20"
+                      className="rounded p-0.5 text-slate-500 transition-colors hover:bg-slate-700/50 hover:text-slate-300 disabled:opacity-20"
                       title="Move down"
                     >
                       ▼
@@ -665,7 +710,7 @@ export function ProjectConfig({
                     <button
                       onClick={() => setDeletingQueueId(queue.id)}
                       title="Delete queue"
-                      className="text-slate-500 hover:text-red-400"
+                      className="rounded p-0.5 text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
                     >
                       🗑️
                     </button>
@@ -716,7 +761,7 @@ export function ProjectConfig({
                 <div className="ml-[3.25rem] mt-1">
                   <button
                     onClick={() => handleToggleQueueSystemPrompt(queue)}
-                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-400"
+                    className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-slate-500 transition-colors hover:bg-slate-700/50 hover:text-slate-400"
                   >
                     <span>{expandedSystemPromptId === queue.id ? '▾' : '▸'}</span>
                     <span>System prompt</span>
@@ -869,7 +914,7 @@ export function ProjectConfig({
                         <button
                           onClick={() => setDeletingTransitionId(t.id)}
                           title="Delete transition"
-                          className="text-slate-500 hover:text-red-400"
+                          className="rounded p-0.5 text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
                         >
                           🗑️
                         </button>
@@ -985,7 +1030,7 @@ export function ProjectConfig({
         <div className="flex justify-end gap-2 border-t border-slate-700/50 px-5 py-3">
           <button
             onClick={onClose}
-            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
+            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-200"
           >
             Cancel
           </button>
