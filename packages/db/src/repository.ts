@@ -4,7 +4,7 @@
  * All mutations return the affected row(s). IDs are generated via randomUUID().
  */
 
-import { eq, and, asc, desc, isNull, isNotNull, count } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, isNotNull, count, inArray } from 'drizzle-orm';
 import type { OpenlareDb } from './client';
 import {
   projects,
@@ -34,10 +34,13 @@ function now(): Date {
 // Project operations
 // ---------------------------------------------------------------------------
 
+export type SessionMode = 'per-task' | 'agent-pool' | 'any-free';
+
 export interface CreateProjectInput {
   name: string;
   config?: ProjectConfig;
   systemPrompt?: string;
+  sessionMode?: SessionMode;
 }
 
 export function createProject(db: OpenlareDb, input: CreateProjectInput) {
@@ -50,6 +53,7 @@ export function createProject(db: OpenlareDb, input: CreateProjectInput) {
       name: input.name,
       config: input.config ?? null,
       systemPrompt: input.systemPrompt ?? null,
+      sessionMode: input.sessionMode ?? 'per-task',
       createdAt: ts,
       updatedAt: ts,
     })
@@ -67,6 +71,7 @@ export interface UpdateProjectInput {
   pinned?: boolean;
   systemPrompt?: string | null;
   lastAccessedAt?: Date;
+  sessionMode?: SessionMode;
 }
 
 export function updateProject(
@@ -83,6 +88,7 @@ export function updateProject(
   if (data.pinned !== undefined) updates.pinned = data.pinned;
   if (data.systemPrompt !== undefined) updates.systemPrompt = data.systemPrompt;
   if (data.lastAccessedAt !== undefined) updates.lastAccessedAt = data.lastAccessedAt;
+  if (data.sessionMode !== undefined) updates.sessionMode = data.sessionMode;
 
   db.update(projects).set(updates).where(eq(projects.id, id)).run();
 
@@ -870,4 +876,40 @@ export function getProjectStats(db: OpenlareDb, projectId: string): ProjectStats
     totalTasks: taskRow?.total ?? 0,
     queueCount: queueRow?.total ?? 0,
   };
+}
+
+/**
+ * List all projects with stats (totalTasks, queueCount) in 3 queries instead of 2N.
+ * Prefer this over calling listProjects + getProjectStats in a loop.
+ */
+export function listProjectsWithStats(
+  db: OpenlareDb,
+): Array<typeof projects.$inferSelect & ProjectStats> {
+  const allProjects = listProjects(db);
+  if (allProjects.length === 0) return [];
+
+  const ids = allProjects.map((p) => p.id);
+
+  const taskCounts = db
+    .select({ projectId: tasks.projectId, total: count() })
+    .from(tasks)
+    .where(inArray(tasks.projectId, ids))
+    .groupBy(tasks.projectId)
+    .all();
+
+  const queueCounts = db
+    .select({ projectId: queues.projectId, total: count() })
+    .from(queues)
+    .where(inArray(queues.projectId, ids))
+    .groupBy(queues.projectId)
+    .all();
+
+  const taskMap = new Map(taskCounts.map((r) => [r.projectId, r.total]));
+  const queueMap = new Map(queueCounts.map((r) => [r.projectId, r.total]));
+
+  return allProjects.map((p) => ({
+    ...p,
+    totalTasks: taskMap.get(p.id) ?? 0,
+    queueCount: queueMap.get(p.id) ?? 0,
+  }));
 }
