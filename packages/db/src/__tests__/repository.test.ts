@@ -38,6 +38,7 @@ import {
   deleteQueueTemplate,
   createProjectFromTemplate,
   createProjectWithDefaults,
+  listProjectsWithStats,
 } from '../repository';
 import type { OpenlareDb } from '../client';
 
@@ -53,6 +54,7 @@ function createTestDb(): OpenlareDb {
       pinned INTEGER NOT NULL DEFAULT 0,
       last_accessed_at INTEGER,
       system_prompt TEXT,
+      session_mode TEXT NOT NULL DEFAULT 'per-task',
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
     CREATE TABLE queues (
@@ -131,6 +133,22 @@ describe('Project', () => {
   it('creates a project with systemPrompt', () => {
     const p = createProject(db, { name: 'Prompted', systemPrompt: 'You are helpful.' });
     expect(p.systemPrompt).toBe('You are helpful.');
+  });
+
+  it('defaults sessionMode to per-task', () => {
+    const p = createProject(db, { name: 'Default Mode' });
+    expect(p.sessionMode).toBe('per-task');
+  });
+
+  it('creates a project with custom sessionMode', () => {
+    const p = createProject(db, { name: 'Agent Pool', sessionMode: 'agent-pool' });
+    expect(p.sessionMode).toBe('agent-pool');
+  });
+
+  it('updates sessionMode', () => {
+    const p = createProject(db, { name: 'Test Mode' });
+    const updated = updateProject(db, p.id, { sessionMode: 'any-free' });
+    expect(updated?.sessionMode).toBe('any-free');
   });
 
   it('updates a project name', () => {
@@ -769,6 +787,23 @@ describe('Project ordering', () => {
 
   beforeEach(() => {
     db = createTestDb();
+  });
+
+  it('listProjectsWithStats returns stats without N+1 queries', () => {
+    const p1 = createProject(db, { name: 'A' });
+    const p2 = createProject(db, { name: 'B' });
+    const qid = createQueue(db, { projectId: p1.id, name: 'Todo', ownerType: 'assistant' }).id;
+    createTask(db, { projectId: p1.id, queueId: qid, title: 'Task 1' });
+    createTask(db, { projectId: p1.id, queueId: qid, title: 'Task 2' });
+
+    const results = listProjectsWithStats(db);
+    const a = results.find((r) => r.id === p1.id)!;
+    const b = results.find((r) => r.id === p2.id)!;
+
+    expect(a.totalTasks).toBe(2);
+    expect(a.queueCount).toBe(1);
+    expect(b.totalTasks).toBe(0);
+    expect(b.queueCount).toBe(0);
   });
 
   it('lists pinned projects first', () => {
