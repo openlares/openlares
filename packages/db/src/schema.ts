@@ -5,7 +5,7 @@
  * Tasks move between queues according to transition rules.
  */
 
-import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core';
 
 // ---------------------------------------------------------------------------
 // Projects (boards / projects)
@@ -37,23 +37,29 @@ export interface ProjectConfig {
 // Queues (columns in the board — states in the state machine)
 // ---------------------------------------------------------------------------
 
-export const queues = sqliteTable('queues', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  /** Who acts on tasks in this queue. */
-  ownerType: text('owner_type', { enum: ['human', 'assistant'] }).notNull(),
-  description: text('description'),
-  /** Display order (0-based column index). */
-  position: integer('position').notNull().default(0),
-  /** Max concurrent agents working on tasks in this queue (0 = unlimited). */
-  agentLimit: integer('agent_limit').notNull().default(1),
-  systemPrompt: text('system_prompt'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const queues = sqliteTable(
+  'queues',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Who acts on tasks in this queue. */
+    ownerType: text('owner_type', { enum: ['human', 'assistant'] }).notNull(),
+    description: text('description'),
+    /** Display order (0-based column index). */
+    position: integer('position').notNull().default(0),
+    /** Max concurrent agents working on tasks in this queue (0 = unlimited). */
+    agentLimit: integer('agent_limit').notNull().default(1),
+    systemPrompt: text('system_prompt'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    projectIdx: index('idx_queues_project').on(table.projectId),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Transitions (edges in the state machine graph)
@@ -85,29 +91,36 @@ export interface TransitionConditions {
 // Tasks
 // ---------------------------------------------------------------------------
 
-export const tasks = sqliteTable('tasks', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  queueId: text('queue_id')
-    .notNull()
-    .references(() => queues.id),
-  title: text('title').notNull(),
-  description: text('description'),
-  /** Higher = more urgent. Default 0. */
-  priority: integer('priority').notNull().default(0),
-  /** OpenClaw session key working on this task (null if not executing). */
-  sessionKey: text('session_key'),
-  /** Agent ID assigned to this task. */
-  assignedAgent: text('assigned_agent'),
-  /** Error message if task failed. null = healthy, non-null = error. */
-  error: text('error'),
-  /** When the error occurred. */
-  errorAt: integer('error_at', { mode: 'timestamp_ms' }),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    queueId: text('queue_id')
+      .notNull()
+      .references(() => queues.id),
+    title: text('title').notNull(),
+    description: text('description'),
+    /** Higher = more urgent. Default 0. */
+    priority: integer('priority').notNull().default(0),
+    /** OpenClaw session key working on this task (null if not executing). */
+    sessionKey: text('session_key'),
+    /** Agent ID assigned to this task. */
+    assignedAgent: text('assigned_agent'),
+    /** Error message if task failed. null = healthy, non-null = error. */
+    error: text('error'),
+    /** When the error occurred. */
+    errorAt: integer('error_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    queueIdx: index('idx_tasks_queue').on(table.queueId),
+    projectIdx: index('idx_tasks_project').on(table.projectId),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Project Agents (agents assigned to a project)
@@ -123,6 +136,7 @@ export const projectAgents = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.projectId, table.agentId] }),
+    projectIdx: index('idx_project_agents_project').on(table.projectId),
   }),
 );
 
@@ -148,49 +162,67 @@ export interface QueueTemplateEntry {
 // Task Comments (conversation thread per task)
 // ---------------------------------------------------------------------------
 
-export const taskComments = sqliteTable('task_comments', {
-  id: text('id').primaryKey(),
-  taskId: text('task_id')
-    .notNull()
-    .references(() => tasks.id, { onDelete: 'cascade' }),
-  /** 'human' or agent ID like 'main'. */
-  author: text('author').notNull(),
-  authorType: text('author_type', { enum: ['human', 'agent'] }).notNull(),
-  content: text('content').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const taskComments = sqliteTable(
+  'task_comments',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    /** 'human' or agent ID like 'main'. */
+    author: text('author').notNull(),
+    authorType: text('author_type', { enum: ['human', 'agent'] }).notNull(),
+    content: text('content').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    taskIdx: index('idx_task_comments_task').on(table.taskId),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Attachments (metadata — actual files stored on filesystem)
 // ---------------------------------------------------------------------------
 
-export const attachments = sqliteTable('attachments', {
-  id: text('id').primaryKey(),
-  taskId: text('task_id')
-    .notNull()
-    .references(() => tasks.id, { onDelete: 'cascade' }),
-  filename: text('filename').notNull(),
-  /** Absolute filesystem path to the file. */
-  path: text('path').notNull(),
-  mimeType: text('mime_type'),
-  /** File size in bytes. */
-  size: integer('size'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const attachments = sqliteTable(
+  'attachments',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    filename: text('filename').notNull(),
+    /** Absolute filesystem path to the file. */
+    path: text('path').notNull(),
+    mimeType: text('mime_type'),
+    /** File size in bytes. */
+    size: integer('size'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    taskIdx: index('idx_attachments_task').on(table.taskId),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Task History (audit trail)
 // ---------------------------------------------------------------------------
 
-export const taskHistory = sqliteTable('task_history', {
-  id: text('id').primaryKey(),
-  taskId: text('task_id')
-    .notNull()
-    .references(() => tasks.id, { onDelete: 'cascade' }),
-  fromQueueId: text('from_queue_id'),
-  toQueueId: text('to_queue_id'),
-  /** Who triggered this: 'human' or an agent ID. */
-  actor: text('actor').notNull(),
-  note: text('note'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const taskHistory = sqliteTable(
+  'task_history',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    fromQueueId: text('from_queue_id'),
+    toQueueId: text('to_queue_id'),
+    /** Who triggered this: 'human' or an agent ID. */
+    actor: text('actor').notNull(),
+    note: text('note'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => ({
+    taskIdx: index('idx_task_history_task').on(table.taskId),
+  }),
+);
