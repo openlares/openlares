@@ -34,10 +34,13 @@ function now(): Date {
 // Project operations
 // ---------------------------------------------------------------------------
 
+export type SessionMode = 'per-task' | 'agent-pool' | 'any-free';
+
 export interface CreateProjectInput {
   name: string;
   config?: ProjectConfig;
   systemPrompt?: string;
+  sessionMode?: SessionMode;
 }
 
 export function createProject(db: OpenlareDb, input: CreateProjectInput) {
@@ -50,6 +53,7 @@ export function createProject(db: OpenlareDb, input: CreateProjectInput) {
       name: input.name,
       config: input.config ?? null,
       systemPrompt: input.systemPrompt ?? null,
+      sessionMode: input.sessionMode ?? 'per-task',
       createdAt: ts,
       updatedAt: ts,
     })
@@ -67,6 +71,7 @@ export interface UpdateProjectInput {
   pinned?: boolean;
   systemPrompt?: string | null;
   lastAccessedAt?: Date;
+  sessionMode?: SessionMode;
 }
 
 export function updateProject(
@@ -83,6 +88,7 @@ export function updateProject(
   if (data.pinned !== undefined) updates.pinned = data.pinned;
   if (data.systemPrompt !== undefined) updates.systemPrompt = data.systemPrompt;
   if (data.lastAccessedAt !== undefined) updates.lastAccessedAt = data.lastAccessedAt;
+  if (data.sessionMode !== undefined) updates.sessionMode = data.sessionMode;
 
   db.update(projects).set(updates).where(eq(projects.id, id)).run();
 

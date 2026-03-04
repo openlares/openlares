@@ -53,6 +53,7 @@ function createTestDb(): OpenlareDb {
       pinned INTEGER NOT NULL DEFAULT 0,
       last_accessed_at INTEGER,
       system_prompt TEXT,
+      session_mode TEXT NOT NULL DEFAULT 'per-task',
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
     CREATE TABLE queues (
@@ -131,6 +132,22 @@ describe('Project', () => {
   it('creates a project with systemPrompt', () => {
     const p = createProject(db, { name: 'Prompted', systemPrompt: 'You are helpful.' });
     expect(p.systemPrompt).toBe('You are helpful.');
+  });
+
+  it('defaults sessionMode to per-task', () => {
+    const p = createProject(db, { name: 'Default Mode' });
+    expect(p.sessionMode).toBe('per-task');
+  });
+
+  it('creates a project with custom sessionMode', () => {
+    const p = createProject(db, { name: 'Agent Pool', sessionMode: 'agent-pool' });
+    expect(p.sessionMode).toBe('agent-pool');
+  });
+
+  it('updates sessionMode', () => {
+    const p = createProject(db, { name: 'Test Mode' });
+    const updated = updateProject(db, p.id, { sessionMode: 'any-free' });
+    expect(updated?.sessionMode).toBe('any-free');
   });
 
   it('updates a project name', () => {

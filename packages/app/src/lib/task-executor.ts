@@ -21,12 +21,20 @@ import {
   listQueues,
   addComment,
   listComments,
+  listProjectAgents,
+  type SessionMode,
   type OpenlareDb,
 } from '@openlares/db';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+interface PoolEntry {
+  sessionKey: string;
+  agentId: string;
+  busy: boolean;
+}
 
 interface ExecutorState {
   running: boolean;
@@ -35,6 +43,8 @@ interface ExecutorState {
   dispatchTime: number | null;
   pollTimer: ReturnType<typeof setTimeout> | null;
   abortController: AbortController | null;
+  /** Session pool for agent-pool and any-free modes. */
+  sessionPool: Map<string, PoolEntry>;
 }
 
 interface GatewayConfig {
@@ -56,6 +66,7 @@ if (!g.__executorState) {
     dispatchTime: null,
     pollTimer: null,
     abortController: null,
+    sessionPool: new Map(),
   };
 }
 const state = g.__executorState;
@@ -128,7 +139,36 @@ function pollForWork(projectId: string): void {
   const task = getNextClaimableTask(db, projectId, AGENT_ID);
 
   if (task) {
-    const sessionKey = `openlares:task:${task.id}`;
+    const project = getProject(db, task.projectId);
+    const sessionMode: SessionMode = project?.sessionMode ?? 'per-task';
+
+    let sessionKey: string;
+    if (sessionMode === 'agent-pool') {
+      const projectAgentIds = listProjectAgents(db, task.projectId);
+      const idle = [...state.sessionPool.values()].find(
+        (e) => !e.busy && projectAgentIds.includes(e.agentId),
+      );
+      if (idle) {
+        sessionKey = idle.sessionKey;
+        idle.busy = true;
+      } else {
+        sessionKey = `openlares:pool:${task.projectId}:${AGENT_ID}:${Date.now()}`;
+        state.sessionPool.set(sessionKey, { sessionKey, agentId: AGENT_ID, busy: true });
+      }
+    } else if (sessionMode === 'any-free') {
+      const idle = [...state.sessionPool.values()].find((e) => !e.busy);
+      if (idle) {
+        sessionKey = idle.sessionKey;
+        idle.busy = true;
+      } else {
+        sessionKey = `openlares:pool:${task.projectId}:any:${Date.now()}`;
+        state.sessionPool.set(sessionKey, { sessionKey, agentId: AGENT_ID, busy: true });
+      }
+    } else {
+      // per-task (default): fresh session per task, not pooled
+      sessionKey = `openlares:task:${task.id}`;
+    }
+
     const claimed = claimTask(db, task.id, AGENT_ID, sessionKey);
 
     if (claimed) {
@@ -302,6 +342,9 @@ async function dispatchTask(
     if (!targetName) {
       setTaskError(db, taskId, 'Agent did not provide routing directive');
       emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+      // Release session back to pool (no-op for per-task sessions)
+      const poolEntry0 = state.sessionPool.get(sessionKey);
+      if (poolEntry0) poolEntry0.busy = false;
       state.currentTaskId = null;
       state.currentSessionKey = null;
       state.dispatchTime = null;
@@ -310,6 +353,9 @@ async function dispatchTask(
 
     const currentTask = getTask(db, taskId);
     if (!currentTask) {
+      // Release session back to pool (no-op for per-task sessions)
+      const poolEntry0 = state.sessionPool.get(sessionKey);
+      if (poolEntry0) poolEntry0.busy = false;
       state.currentTaskId = null;
       state.currentSessionKey = null;
       state.dispatchTime = null;
@@ -320,6 +366,9 @@ async function dispatchTask(
     if (targetName.toUpperCase() === 'STUCK') {
       setTaskError(db, taskId, "Agent couldn't determine destination queue");
       emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+      // Release session back to pool (no-op for per-task sessions)
+      const poolEntry0 = state.sessionPool.get(sessionKey);
+      if (poolEntry0) poolEntry0.busy = false;
       state.currentTaskId = null;
       state.currentSessionKey = null;
       state.dispatchTime = null;
@@ -336,6 +385,9 @@ async function dispatchTask(
     if (!targetQueue && targetName.toUpperCase() === 'DONE') {
       releaseTask(db, taskId);
       emit({ type: 'task:updated', taskId, timestamp: Date.now() });
+      // Release session back to pool (no-op for per-task sessions)
+      const poolEntry0 = state.sessionPool.get(sessionKey);
+      if (poolEntry0) poolEntry0.busy = false;
       state.currentTaskId = null;
       state.currentSessionKey = null;
       state.dispatchTime = null;
@@ -395,6 +447,9 @@ async function dispatchTask(
     }
 
     releaseTask(db, taskId);
+    // Release session back to pool (no-op for per-task sessions)
+    const poolEntrySuccess = state.sessionPool.get(sessionKey);
+    if (poolEntrySuccess) poolEntrySuccess.busy = false;
     state.currentTaskId = null;
     state.currentSessionKey = null;
     state.dispatchTime = null;
@@ -412,6 +467,9 @@ async function dispatchTask(
     }
     emit({ type: 'task:updated', taskId, timestamp: Date.now() });
     releaseTask(db, taskId);
+    // Release session back to pool (no-op for per-task sessions)
+    const poolEntryFinal = state.sessionPool.get(sessionKey);
+    if (poolEntryFinal) poolEntryFinal.busy = false;
     state.currentTaskId = null;
     state.currentSessionKey = null;
     state.dispatchTime = null;
