@@ -88,12 +88,12 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
   return (
     <div className="flex-1 overflow-auto p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-100">
-          <span className="text-amber-400">Projects</span>
+        <h1 className="text-2xl font-bold text-slate-100">
+          <span className="text-cyan-400">Projects</span>
         </h1>
         <button
           onClick={() => setShowNewForm(true)}
-          className="rounded bg-amber-400 px-4 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-amber-300"
+          className="rounded bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-900 transition-colors hover:bg-cyan-400"
         >
           + New Project
         </button>
@@ -101,8 +101,8 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
 
       {showNewForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-900 p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-semibold text-gray-100">New Project</h2>
+          <div className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-6 shadow-xl">
+            <h2 className="mb-4 text-lg font-semibold text-slate-100">New Project</h2>
             <form onSubmit={handleCreateProject} className="flex flex-col gap-3">
               <input
                 type="text"
@@ -110,14 +110,14 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 autoFocus
-                className="rounded border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 placeholder-gray-500 outline-none focus:border-amber-400"
+                className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 placeholder-slate-500 outline-none focus:border-cyan-400"
               />
               <div>
-                <label className="mb-1 block text-xs text-gray-400">Template</label>
+                <label className="mb-1 block text-xs text-slate-400">Template</label>
                 <select
                   value={templateId}
                   onChange={(e) => setTemplateId(e.target.value)}
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-gray-100 outline-none focus:border-amber-400"
+                  className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400"
                 >
                   <option value="">Default (Todo &#8594; In Progress &#8594; Done)</option>
                   {templates.map((t) => (
@@ -131,7 +131,7 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
                 <button
                   type="submit"
                   disabled={creating || !newName.trim()}
-                  className="flex-1 rounded bg-amber-400 py-2 text-sm font-medium text-gray-900 hover:bg-amber-300 disabled:opacity-50"
+                  className="flex-1 rounded bg-cyan-500 py-2 text-sm font-medium text-slate-900 hover:bg-cyan-400 disabled:opacity-50"
                 >
                   {creating ? 'Creating...' : 'Create'}
                 </button>
@@ -142,7 +142,7 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
                     setNewName('');
                     setTemplateId('');
                   }}
-                  className="flex-1 rounded border border-gray-700 py-2 text-sm text-gray-400 hover:bg-gray-800"
+                  className="flex-1 rounded border border-slate-700 py-2 text-sm text-slate-400 hover:bg-slate-800"
                 >
                   Cancel
                 </button>
@@ -153,7 +153,7 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
       )}
 
       {projects.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center gap-4 text-gray-500">
+        <div className="flex h-64 flex-col items-center justify-center gap-4 text-slate-500">
           <div className="text-5xl">&#x1F4CB;</div>
           <p className="text-lg">No projects yet</p>
           <p className="text-sm">Create your first project to get started.</p>
@@ -164,7 +164,7 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
             <button
               key={project.id}
               onClick={() => router.push(`/projects/${project.id}`)}
-              className="group relative flex flex-col gap-3 rounded-lg border border-gray-800 bg-gray-900 p-5 text-left transition-colors hover:border-gray-700 hover:bg-gray-800"
+              className="group relative flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900 p-5 text-left transition-colors hover:border-slate-700 hover:bg-slate-800"
             >
               <button
                 onClick={(e) => handleTogglePin(e, project)}
@@ -177,15 +177,15 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
               </button>
 
               <div className="pr-8">
-                <h2 className="font-semibold text-gray-100">{project.name}</h2>
-                <p className="mt-1 text-sm text-gray-500">
+                <h2 className="font-semibold text-slate-100">{project.name}</h2>
+                <p className="mt-1 text-sm text-slate-500">
                   {project.totalTasks} task{project.totalTasks !== 1 ? 's' : ''} &#xB7;{' '}
                   {project.queueCount} queue{project.queueCount !== 1 ? 's' : ''}
                 </p>
               </div>
 
               {project.lastAccessedAt && (
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-slate-600">
                   Last visited{' '}
                   {new Date(project.lastAccessedAt).toLocaleDateString(undefined, {
                     month: 'short',
