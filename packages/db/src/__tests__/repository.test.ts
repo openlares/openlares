@@ -38,6 +38,7 @@ import {
   deleteQueueTemplate,
   createProjectFromTemplate,
   createProjectWithDefaults,
+  listProjectsWithStats,
 } from '../repository';
 import type { OpenlareDb } from '../client';
 
@@ -786,6 +787,23 @@ describe('Project ordering', () => {
 
   beforeEach(() => {
     db = createTestDb();
+  });
+
+  it('listProjectsWithStats returns stats without N+1 queries', () => {
+    const p1 = createProject(db, { name: 'A' });
+    const p2 = createProject(db, { name: 'B' });
+    const qid = createQueue(db, { projectId: p1.id, name: 'Todo', ownerType: 'assistant' }).id;
+    createTask(db, { projectId: p1.id, queueId: qid, title: 'Task 1' });
+    createTask(db, { projectId: p1.id, queueId: qid, title: 'Task 2' });
+
+    const results = listProjectsWithStats(db);
+    const a = results.find((r) => r.id === p1.id)!;
+    const b = results.find((r) => r.id === p2.id)!;
+
+    expect(a.totalTasks).toBe(2);
+    expect(a.queueCount).toBe(1);
+    expect(b.totalTasks).toBe(0);
+    expect(b.queueCount).toBe(0);
   });
 
   it('lists pinned projects first', () => {

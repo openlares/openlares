@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useToastStore } from '@/lib/toast-store';
 import { useRouter } from 'next/navigation';
 import type { Project } from '@/components/tasks/types';
 
@@ -26,6 +27,7 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
   const [templateId, setTemplateId] = useState('');
   const [templates, setTemplates] = useState<QueueTemplate[]>([]);
   const [creating, setCreating] = useState(false);
+  const addToast = useToastStore((s) => s.addToast);
 
   useEffect(() => {
     if (!showNewForm) return;
@@ -57,7 +59,12 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
         setTemplateId('');
         setShowNewForm(false);
         router.push(`/projects/${created.id}`);
+      } else {
+        const errData = (await res.json()) as { error?: string };
+        addToast('error', errData.error ?? 'Failed to create project');
       }
+    } catch {
+      addToast('error', 'Network error — check your connection');
     } finally {
       setCreating(false);
     }
