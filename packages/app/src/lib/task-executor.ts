@@ -7,7 +7,8 @@
  * "MOVE TO: <queue name>" in its response message.
  */
 
-import { GatewayClient, getServerDeviceIdentity } from '@openlares/api-client';
+import { GatewayClient } from '@openlares/api-client';
+import { getServerDeviceIdentity } from '@openlares/api-client/server';
 import type { ChatEventPayload } from '@openlares/api-client';
 import { getDb } from './db';
 import { emit } from './task-events';
