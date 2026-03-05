@@ -82,11 +82,11 @@ class MockWebSocket {
   }
 
   /** Simulate the connection closing. */
-  simulateClose(): void {
+  simulateClose(reason = ''): void {
     this.readyState = MockWebSocket.CLOSED;
     const handlers = this.listeners['close'] ?? [];
     for (const h of handlers) {
-      h({});
+      h({ reason });
     }
   }
 
@@ -406,6 +406,41 @@ describe('GatewayClient event subscriptions', () => {
     ws.simulateMessage({ type: 'event', event: 'tick', payload: { ts: 2 } });
     expect(received).toHaveLength(1);
 
+    client.disconnect();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleClose with close reason
+// ---------------------------------------------------------------------------
+
+describe('GatewayClient handleClose reason propagation', () => {
+  it('rejects connect() with close reason when WS closes during handshake', async () => {
+    const client = new GatewayClient({ url: 'ws://test', token: 'tok' });
+    const connectPromise = client.connect();
+
+    await vi.waitFor(() => expect(mockWsInstance).not.toBeNull());
+    const ws = mockWsInstance!;
+
+    // Simulate server closing with 'pairing-required' reason before handshake
+    ws.simulateClose('pairing-required');
+
+    await expect(connectPromise).rejects.toThrow('pairing-required');
+    // shouldReconnect is true so status is 'connecting' (scheduled reconnect) — that's expected
+    client.disconnect();
+  });
+
+  it('rejects connect() with generic message when WS closes without reason', async () => {
+    const client = new GatewayClient({ url: 'ws://test', token: 'tok' });
+    const connectPromise = client.connect();
+
+    await vi.waitFor(() => expect(mockWsInstance).not.toBeNull());
+    const ws = mockWsInstance!;
+
+    // Close with no reason
+    ws.simulateClose('');
+
+    await expect(connectPromise).rejects.toThrow('Connection closed');
     client.disconnect();
   });
 });

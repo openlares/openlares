@@ -405,7 +405,16 @@ export class GatewayClient {
   // Internals — WebSocket lifecycle
   // -----------------------------------------------------------------------
 
-  private handleClose = (): void => {
+  private handleClose = (event: Event): void => {
+    const reason = (event as CloseEvent).reason ?? '';
+
+    // Reject the handshake promise if we're still in the connecting phase
+    if (this.connectReject) {
+      this.connectReject(new Error(reason || 'Connection closed'));
+      this.connectResolve = null;
+      this.connectReject = null;
+    }
+
     this.rejectAllPending('Connection closed');
     this.cleanup();
 

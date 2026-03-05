@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { PixiCanvas } from '@openlares/game-engine';
 import { useGatewayStore } from '@openlares/api-client';
+import { loadGatewayConfig } from '@/lib/storage';
+import { SetupWizard } from '@/components/setup-wizard';
 
 export default function Home() {
   const connectionStatus = useGatewayStore((s) => s.connectionStatus);
@@ -11,6 +13,14 @@ export default function Home() {
   const sessionActivities = useGatewayStore((s) => s.sessionActivities);
   const activeSessionKey = useGatewayStore((s) => s.activeSessionKey);
   const selectSession = useGatewayStore((s) => s.selectSession);
+
+  const [showWizard, setShowWizard] = useState(false);
+
+  useEffect(() => {
+    if (loadGatewayConfig() === null) {
+      setShowWizard(true);
+    }
+  }, []);
 
   const handleSessionClick = useCallback(
     (sessionKey: string) => {
@@ -21,7 +31,9 @@ export default function Home() {
 
   return (
     <div className="flex h-full flex-col bg-[#0a0a1a]">
-      {connectionStatus === 'disconnected' && (
+      {showWizard && <SetupWizard onSkip={() => setShowWizard(false)} />}
+
+      {!showWizard && connectionStatus === 'disconnected' && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-gray-500">
           <p className="text-lg">Not connected to a gateway</p>
           <Link
