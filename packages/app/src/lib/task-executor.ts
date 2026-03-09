@@ -2,11 +2,14 @@
  * Task executor — connects tasks to OpenClaw agent sessions.
  *
  * Polls for claimable tasks in assistant-owned queues,
- * dispatches them via HTTP /v1/chat/completions, and processes
+ * dispatches them via WebSocket chat.send, and processes
  * the response directly. Agent signals completion via
  * "MOVE TO: <queue name>" in its response message.
  */
 
+import { GatewayClient } from '@openlares/api-client';
+import { getServerDeviceIdentity } from '@openlares/api-client/server';
+import type { ChatEventPayload } from '@openlares/api-client';
 import { getDb } from './db';
 import { emit } from './task-events';
 import {
@@ -42,7 +45,7 @@ interface ExecutorState {
   currentSessionKey: string | null;
   dispatchTime: number | null;
   pollTimer: ReturnType<typeof setTimeout> | null;
-  abortController: AbortController | null;
+  cancelDispatch: (() => void) | null;
   /** Session pool for agent-pool and any-free modes. */
   sessionPool: Map<string, PoolEntry>;
 }
@@ -57,7 +60,10 @@ interface GatewayConfig {
 // ---------------------------------------------------------------------------
 
 // Persist state across HMR in dev mode
-const g = globalThis as unknown as { __executorState?: ExecutorState };
+const g = globalThis as unknown as {
+  __executorState?: ExecutorState;
+  __gatewayClient?: GatewayClient | null;
+};
 if (!g.__executorState) {
   g.__executorState = {
     running: false,
@@ -65,11 +71,42 @@ if (!g.__executorState) {
     currentSessionKey: null,
     dispatchTime: null,
     pollTimer: null,
-    abortController: null,
+    cancelDispatch: null,
     sessionPool: new Map(),
   };
 }
 const state = g.__executorState;
+
+// ---------------------------------------------------------------------------
+// Gateway client singleton — persisted across HMR
+// ---------------------------------------------------------------------------
+
+function getGatewayClient(): GatewayClient | null {
+  return (g as { __gatewayClient?: GatewayClient | null }).__gatewayClient ?? null;
+}
+
+async function initGatewayClient(config: GatewayConfig): Promise<void> {
+  // Disconnect and replace any existing client
+  const existing = getGatewayClient();
+  if (existing) {
+    existing.disconnect();
+  }
+
+  const identity = await getServerDeviceIdentity();
+  const client = new GatewayClient({
+    url: config.url,
+    token: config.token,
+    origin: 'https://localhost:3000',
+    serverDeviceIdentity: identity,
+  });
+
+  (g as { __gatewayClient?: GatewayClient | null }).__gatewayClient = client;
+
+  // Connect with auto-reconnect (fire and forget — client retries on failure)
+  void client.connect().catch(() => {
+    // Initial connect failure — GatewayClient.shouldReconnect=true handles retry
+  });
+}
 
 const POLL_INTERVAL_MS = 5_000;
 const EXECUTION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -83,6 +120,8 @@ let gatewayConfig: GatewayConfig | null = null;
 
 export function configureGateway(config: GatewayConfig): void {
   gatewayConfig = config;
+  // Kick off async client init (fire and forget)
+  void initGatewayClient(config);
 }
 
 // ---------------------------------------------------------------------------
@@ -112,9 +151,9 @@ export function startExecutor(projectId: string): void {
 export function stopExecutor(): void {
   state.running = false;
   state.dispatchTime = null;
-  // Abort any in-flight fetch request
-  state.abortController?.abort();
-  state.abortController = null;
+  // Cancel any in-flight dispatch
+  state.cancelDispatch?.();
+  state.cancelDispatch = null;
   if (state.pollTimer) {
     clearTimeout(state.pollTimer);
     state.pollTimer = null;
@@ -185,7 +224,7 @@ function pollForWork(projectId: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Task dispatch — send to OpenClaw via HTTP /v1/chat/completions
+// Task dispatch — send to OpenClaw via WebSocket chat.send
 // ---------------------------------------------------------------------------
 
 interface BuildPromptInput {
@@ -283,51 +322,62 @@ async function dispatchTask(
       queueSystemPrompt: currentQueue?.systemPrompt,
     });
 
+    const client = getGatewayClient();
+    if (!client || client.status !== 'connected') {
+      throw new Error('Gateway client not connected');
+    }
+
     state.dispatchTime = Date.now();
 
-    // Convert WebSocket URL to HTTP URL
-    const httpUrl = gatewayConfig.url
-      .replace(/^wss:\/\//, 'https://')
-      .replace(/^ws:\/\//, 'http://');
+    const content = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        unsub();
+        state.cancelDispatch = null;
+        reject(new Error('Execution timeout (30m)'));
+      }, EXECUTION_TIMEOUT_MS);
 
-    // Allow self-signed certs for LAN setups
-    const prevTLS = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      const unsub = client.on('chat', (raw: unknown) => {
+        const payload = raw as ChatEventPayload;
+        if (payload.sessionKey !== sessionKey) return;
 
-    const controller = new AbortController();
-    state.abortController = controller;
-
-    let content: string;
-    try {
-      // Combine manual abort signal with execution timeout
-      const timeoutSignal = AbortSignal.timeout(EXECUTION_TIMEOUT_MS);
-      const signal = AbortSignal.any
-        ? AbortSignal.any([controller.signal, timeoutSignal])
-        : controller.signal;
-
-      const response = await fetch(`${httpUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${gatewayConfig.token}`,
-        },
-        body: JSON.stringify({
-          model: 'openclaw:main',
-          messages: [{ role: 'user', content: prompt }],
-          sessionKey,
-          stream: false,
-        }),
-        signal,
+        if (payload.state === 'final') {
+          clearTimeout(timeout);
+          unsub();
+          state.cancelDispatch = null;
+          resolve(payload.message ?? '');
+        } else if (payload.state === 'error') {
+          clearTimeout(timeout);
+          unsub();
+          state.cancelDispatch = null;
+          reject(new Error(payload.errorMessage ?? 'Agent error'));
+        } else if (payload.state === 'aborted') {
+          clearTimeout(timeout);
+          unsub();
+          state.cancelDispatch = null;
+          reject(new Error('Agent aborted'));
+        }
       });
 
-      const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
+      state.cancelDispatch = () => {
+        clearTimeout(timeout);
+        unsub();
+        state.cancelDispatch = null;
+        reject(new Error('Executor stopped'));
       };
-      content = data.choices?.[0]?.message?.content ?? '';
-    } finally {
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTLS;
-      state.abortController = null;
-    }
+
+      client
+        .request<{ runId: string }>('chat.send', {
+          idempotencyKey: crypto.randomUUID(),
+          sessionKey,
+          message: prompt,
+        })
+        .catch((err: Error) => {
+          clearTimeout(timeout);
+          unsub();
+          state.cancelDispatch = null;
+          reject(err);
+        });
+    });
 
     // Parse the MOVE TO directive from the response
     const targetName = parseMoveDirective(extractContent(content));
@@ -454,10 +504,10 @@ async function dispatchTask(
     state.currentSessionKey = null;
     state.dispatchTime = null;
   } catch (err) {
-    const isAbort =
-      err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
-    if (isAbort) {
-      const errorMsg = `Execution timeout (30m)`;
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTimeoutOrStop = msg === 'Execution timeout (30m)' || msg === 'Executor stopped';
+    if (isTimeoutOrStop) {
+      const errorMsg = msg === 'Executor stopped' ? 'Executor stopped' : 'Execution timeout (30m)';
       addComment(db, taskId, 'system', 'agent', `\u26a0\ufe0f ${errorMsg}`);
       emit({ type: 'task:comment', taskId, timestamp: Date.now() });
       setTaskError(db, taskId, errorMsg);

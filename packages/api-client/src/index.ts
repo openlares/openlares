@@ -44,6 +44,7 @@ export type { GatewayClientOptions, EventHandler, StatusChangeHandler } from './
 
 // Device identity
 export { getDeviceIdentity, signConnectChallenge } from './device-identity';
+
 export type { DeviceIdentity, DeviceSignature } from './device-identity';
 
 // Re-export core types consumers will need
