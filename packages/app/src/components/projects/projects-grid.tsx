@@ -161,10 +161,18 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <button
+            <div
               key={project.id}
+              role="button"
+              tabIndex={0}
               onClick={() => router.push(`/projects/${project.id}`)}
-              className="group relative flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900 p-5 text-left transition-colors hover:border-slate-700 hover:bg-slate-800"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  router.push(`/projects/${project.id}`);
+                }
+              }}
+              className="group relative flex cursor-pointer flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900 p-5 text-left transition-colors hover:border-slate-700 hover:bg-slate-800"
             >
               <button
                 onClick={(e) => handleTogglePin(e, project)}
@@ -193,7 +201,7 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
                   })}
                 </p>
               )}
-            </button>
+            </div>
           ))}
         </div>
       )}
