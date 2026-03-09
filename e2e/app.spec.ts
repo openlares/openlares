@@ -17,9 +17,9 @@ test.describe('App', () => {
     await expect(urlInput).toBeVisible();
   });
 
-  test('shows "Not connected" state on dashboard when no gateway', async ({ page }) => {
+  test('shows setup wizard on dashboard when no gateway config', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('text=Not connected')).toBeVisible();
+    await expect(page.locator('text=Connect to OpenClaw')).toBeVisible();
   });
 
   test('settings page has connect button', async ({ page }) => {
