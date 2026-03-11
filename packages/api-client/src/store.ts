@@ -514,6 +514,10 @@ function normaliseContent(content: unknown): string {
       .map((b: Record<string, unknown>) => b.text)
       .join('');
   }
+  // Gateway chat events send message as { role, content, timestamp } object
+  if (content && typeof content === 'object' && 'content' in content) {
+    return normaliseContent((content as Record<string, unknown>).content);
+  }
   return String(content ?? '');
 }
 
@@ -524,6 +528,10 @@ function normaliseContent(content: unknown): string {
  * We collect and join them into a single string.
  */
 function extractThinking(content: unknown): string | undefined {
+  // Unwrap message objects: { role, content: [...], timestamp }
+  if (content && typeof content === 'object' && !Array.isArray(content) && 'content' in content) {
+    return extractThinking((content as Record<string, unknown>).content);
+  }
   if (!Array.isArray(content)) return undefined;
   const parts = content
     .filter((b: Record<string, unknown>) => b.type === 'thinking' && typeof b.thinking === 'string')
