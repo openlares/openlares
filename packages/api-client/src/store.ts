@@ -884,6 +884,21 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
     // Track per-session activity from lifecycle events
     if (payload.stream === 'lifecycle') {
       const sk = payload.sessionKey || gatewayStore.getState().runIdToSession[payload.runId];
+
+      // Populate runIdToSession from agent events too, not just chat events.
+      // Ensures future events for this runId resolve correctly even if sessionKey is absent.
+      if (sk && payload.runId && !gatewayStore.getState().runIdToSession[payload.runId]) {
+        set((state) => ({
+          runIdToSession: { ...state.runIdToSession, [payload.runId]: sk },
+        }));
+      }
+
+      // Fallback: if sessionKey couldn't be resolved on start, schedule a refresh
+      // so the new session gets discovered from the API within ~1 second.
+      if (!sk && payload.data.phase === 'start') {
+        scheduleSessionRefresh();
+      }
+
       if (sk && payload.data.phase === 'start') {
         set((state) => {
           const exists = state.sessions.some((s) => s.sessionKey === sk);
