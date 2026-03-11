@@ -26,6 +26,8 @@ export interface ChatProps {
   isLoadingMore?: boolean;
   /** Whether there are more messages to load. */
   hasMore?: boolean;
+  /** Whether to show thinking blocks. Defaults to true. */
+  showThinking?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,10 +93,17 @@ function renderContent(content: unknown): string {
   return String(content ?? '');
 }
 
-function MessageItem({ message }: { message: ChatMessage }) {
+function MessageItem({
+  message,
+  showThinking = true,
+}: {
+  message: ChatMessage;
+  showThinking?: boolean;
+}) {
   const isUser = message.role === 'user';
   const rawContent = renderContent(message.content);
   const strippedContent = isUser ? stripMetadataEnvelope(rawContent) : rawContent;
+  const [thinkingOpen, setThinkingOpen] = useState(false);
 
   const displayContent =
     strippedContent.length > MAX_DISPLAY_LENGTH
@@ -106,6 +115,24 @@ function MessageItem({ message }: { message: ChatMessage }) {
       <span className={`text-xs font-medium ${isUser ? 'text-gray-400' : 'text-amber-400'}`}>
         {isUser ? 'You' : 'Agent'}
       </span>
+      {/* Thinking block — collapsible, shown before main content */}
+      {!isUser && showThinking && message.thinking && (
+        <div className="mt-2 border-l-2 border-slate-600 pl-3">
+          <button
+            type="button"
+            onClick={() => setThinkingOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-400 transition-colors"
+          >
+            <span>{thinkingOpen ? '▾' : '▸'}</span>
+            <span>💭 Thinking</span>
+          </button>
+          {thinkingOpen && (
+            <pre className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-500 font-mono">
+              {message.thinking}
+            </pre>
+          )}
+        </div>
+      )}
       {isUser ? (
         <p
           className="mt-1 break-words text-sm leading-relaxed text-gray-200"
@@ -188,6 +215,7 @@ export function Chat({
   onLoadMore,
   isLoadingMore,
   hasMore,
+  showThinking = true,
 }: ChatProps) {
   const [input, setInput] = useState('');
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -294,7 +322,7 @@ export function Chat({
                 onLoadMore();
               }
             }}
-            itemContent={(index, msg) => <MessageItem message={msg} />}
+            itemContent={(index, msg) => <MessageItem message={msg} showThinking={showThinking} />}
             components={{
               Header: () =>
                 isLoadingMore ? (

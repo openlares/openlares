@@ -3,7 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useGatewayStore } from '@openlares/api-client';
 import { ConnectionStatus } from '@openlares/ui';
-import { saveGatewayConfig, loadGatewayConfig, clearGatewayConfig } from '@/lib/storage';
+import {
+  saveGatewayConfig,
+  loadGatewayConfig,
+  clearGatewayConfig,
+  saveDisplayConfig,
+  loadDisplayConfig,
+} from '@/lib/storage';
 
 export default function SettingsPage() {
   const connectionStatus = useGatewayStore((s) => s.connectionStatus);
@@ -13,6 +19,7 @@ export default function SettingsPage() {
 
   const [url, setUrl] = useState('ws://localhost:18789');
   const [token, setToken] = useState('');
+  const [showThinking, setShowThinking] = useState(true);
 
   // Load saved config on mount
   useEffect(() => {
@@ -21,6 +28,8 @@ export default function SettingsPage() {
       setUrl(saved.url);
       setToken(saved.auth);
     }
+    const displayConfig = loadDisplayConfig();
+    setShowThinking(displayConfig.showThinking);
   }, []);
 
   const isConnected = connectionStatus === 'connected';
@@ -81,6 +90,38 @@ export default function SettingsPage() {
               className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none disabled:opacity-50"
             />
           </div>
+        </div>
+
+        {/* Display settings */}
+        <div className="space-y-4 border-t border-gray-800 pt-6">
+          <h2 className="text-lg font-semibold text-gray-200">Display</h2>
+          <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-gray-800 bg-gray-900 p-4">
+            <div>
+              <p className="text-sm font-medium text-gray-200">Show thinking blocks</p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Display the agent’s chain-of-thought before each response
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showThinking}
+              onClick={() => {
+                const next = !showThinking;
+                setShowThinking(next);
+                saveDisplayConfig({ showThinking: next });
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-gray-950 ${
+                showThinking ? 'bg-amber-500' : 'bg-gray-700'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  showThinking ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </label>
         </div>
 
         {/* Action button */}
