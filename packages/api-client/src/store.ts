@@ -786,12 +786,12 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
         if (last && last.role === 'assistant') {
           msgs[msgs.length - 1] = {
             ...last,
-            content: last.content + payload.message,
+            content: last.content + normaliseContent(payload.message),
           };
         } else {
           const newMessage: ChatMessage = {
             role: 'assistant',
-            content: payload.message!,
+            content: normaliseContent(payload.message),
             timestamp: Date.now(),
           };
           // Only add if it would pass the filter (but allow partial content during streaming)
@@ -810,7 +810,7 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
 
         const finalMessage: ChatMessage = {
           role: 'assistant',
-          content: payload.message!,
+          content: normaliseContent(payload.message),
           timestamp: Date.now(),
         };
 
