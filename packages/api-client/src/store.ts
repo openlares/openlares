@@ -333,6 +333,7 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
     const normalised = result.messages.map((m) => ({
       ...m,
       content: normaliseContent(m.content),
+      thinking: extractThinking(m.content),
     }));
 
     // Filter out system noise, then clean remaining messages
@@ -514,6 +515,20 @@ function normaliseContent(content: unknown): string {
       .join('');
   }
   return String(content ?? '');
+}
+
+/**
+ * Extract thinking text from gateway message content.
+ *
+ * OpenClaw may include `{ type: "thinking", thinking: "..." }` blocks.
+ * We collect and join them into a single string.
+ */
+function extractThinking(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  const parts = content
+    .filter((b: Record<string, unknown>) => b.type === 'thinking' && typeof b.thinking === 'string')
+    .map((b: Record<string, unknown>) => b.thinking as string);
+  return parts.length > 0 ? parts.join('\n') : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -811,6 +826,7 @@ function wireEvents(client: GatewayClient, set: StoreSetter): void {
         const finalMessage: ChatMessage = {
           role: 'assistant',
           content: normaliseContent(payload.message),
+          thinking: extractThinking(payload.message),
           timestamp: Date.now(),
         };
 

@@ -33,6 +33,8 @@ export interface GatewayConfig {
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  /** Chain-of-thought text from a thinking block, if present. */
+  thinking?: string;
   timestamp: number;
 }
 

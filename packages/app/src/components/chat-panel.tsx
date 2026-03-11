@@ -1,7 +1,9 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Chat } from '@openlares/ui';
 import { useGatewayStore, cleanSessionName } from '@openlares/api-client';
+import { loadDisplayConfig } from '@/lib/storage';
 
 export function ChatPanel() {
   const messages = useGatewayStore((s) => s.messages);
@@ -14,6 +16,11 @@ export function ChatPanel() {
   const hasMore = useGatewayStore((s) => s.hasMoreHistory);
   const activeSessionKey = useGatewayStore((s) => s.activeSessionKey);
   const sessions = useGatewayStore((s) => s.sessions);
+  const [showThinking, setShowThinking] = useState(true);
+
+  useEffect(() => {
+    setShowThinking(loadDisplayConfig().showThinking);
+  }, []);
 
   // Find the active session for display name
   const activeSession = sessions.find((s) => s.sessionKey === activeSessionKey);
@@ -50,6 +57,7 @@ export function ChatPanel() {
           onLoadMore={() => void loadMoreHistory()}
           isLoadingMore={isLoadingMore}
           hasMore={hasMore}
+          showThinking={showThinking}
         />
       </div>
     </div>
