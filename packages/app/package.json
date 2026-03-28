@@ -20,18 +20,18 @@
     "@openlares/db": "workspace:*",
     "@openlares/game-engine": "workspace:*",
     "@openlares/ui": "workspace:*",
-    "next": "^16.1.6",
+    "next": "^16.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-resizable-panels": "^4.7.0",
-    "zustand": "^5.0.0"
+    "react-resizable-panels": "^4.7.5",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.2.1",
-    "@types/node": "25.3.3",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "25.5.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "tailwindcss": "^4.2.1",
+    "tailwindcss": "^4.2.2",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }
