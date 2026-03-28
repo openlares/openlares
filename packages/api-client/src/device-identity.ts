@@ -8,12 +8,12 @@
  */
 
 import { etc, getPublicKeyAsync, signAsync } from '@noble/ed25519';
+import { sha256, sha512 } from '@noble/hashes/sha2.js';
 
-// Configure @noble/ed25519 to use WebCrypto for SHA-512
-(etc as Record<string, unknown>).sha512Async = async (message: Uint8Array): Promise<Uint8Array> => {
-  const hash = await crypto.subtle.digest('SHA-512', message.slice().buffer as ArrayBuffer);
-  return new Uint8Array(hash);
-};
+// Configure @noble/ed25519 to use @noble/hashes for SHA-512
+// Works in both HTTPS and HTTP contexts (no WebCrypto dependency)
+(etc as Record<string, unknown>).sha512Async = async (message: Uint8Array): Promise<Uint8Array> =>
+  sha512(message);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,8 +67,8 @@ function bytesToHex(bytes: Uint8Array): string {
 // Device ID = SHA-256 hex of raw public key bytes
 // ---------------------------------------------------------------------------
 
-async function computeDeviceId(publicKeyBytes: Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest('SHA-256', publicKeyBytes.slice().buffer as ArrayBuffer);
+function computeDeviceId(publicKeyBytes: Uint8Array): string {
+  const hash = sha256(publicKeyBytes);
   return bytesToHex(new Uint8Array(hash));
 }
 
@@ -80,7 +80,7 @@ async function computeDeviceId(publicKeyBytes: Uint8Array): Promise<string> {
 export async function generateDeviceIdentity(): Promise<DeviceIdentity> {
   const privateKeyBytes = etc.randomBytes(32);
   const publicKeyBytes = await getPublicKeyAsync(privateKeyBytes);
-  const deviceId = await computeDeviceId(publicKeyBytes);
+  const deviceId = computeDeviceId(publicKeyBytes);
   return {
     deviceId,
     publicKey: toBase64Url(publicKeyBytes),
@@ -88,10 +88,6 @@ export async function generateDeviceIdentity(): Promise<DeviceIdentity> {
   };
 }
 
-/**
- * Load existing identity from localStorage, or generate a new one.
- * Validates that the stored deviceId matches the public key hash.
- */
 /**
  * Load existing identity from localStorage (browser) or generate a new one.
  * For server-side, use getServerDeviceIdentity from './server-identity'.
