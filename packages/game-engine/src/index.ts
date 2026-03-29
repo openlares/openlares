@@ -24,3 +24,5 @@ export {
   hashCode,
   seededRandom,
 } from './canvas-utils';
+export { ReactionManager } from './animations';
+export type { ReactionType } from './animations';

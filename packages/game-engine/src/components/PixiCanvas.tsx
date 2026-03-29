@@ -18,6 +18,8 @@ import {
   hashCode,
   seededRandom,
 } from '../canvas-utils';
+import { ReactionManager } from '../animations';
+import type { ReactionType } from '../animations';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +60,10 @@ interface PixiCanvasProps {
   /** Live per-session activity state (rings & badges driven from this). */
   sessionActivities: Record<string, SessionActivityState>;
   onSessionClick: (sessionKey: string) => void;
+  /** Callback ref to let parent trigger reactions on specific sessions */
+  reactionRef?: React.RefObject<{
+    playReaction: (sessionKey: string, type: ReactionType) => void;
+  } | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +71,7 @@ interface PixiCanvasProps {
 // ---------------------------------------------------------------------------
 
 /**
- * PixiCanvas \u2014 renders a PixiJS scene with clickable session avatars.
+ * PixiCanvas — renders a PixiJS scene with clickable session avatars.
  *
  * Architecture:
  *  - The PixiJS Application is created ONCE on mount.
@@ -73,12 +79,15 @@ interface PixiCanvasProps {
  *  - Activity rings/badges are driven in the animation ticker by reading
  *    `sessionActivities` from a ref (no rebuild needed for activity updates).
  *  - Positions use seeded random for stability across rebuilds.
+ *  - GSAP ReactionManager handles bounce/shake/pop/idle animations on
+ *    `avatar.graphic` (inner circle) to avoid conflict with container drift.
  */
 export function PixiCanvas({
   sessions,
   activeSessionKey,
   sessionActivities,
   onSessionClick,
+  reactionRef,
 }: PixiCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -116,17 +125,22 @@ export function PixiCanvas({
     tip.style.opacity = '0';
   }, []);
 
+  // ---- ReactionManager ref (stable across re-renders) ----
+  const reactionManagerRef = useRef<ReactionManager | null>(null);
+
   // ---- Sync avatars: (re)build scene from current data ----
 
   const syncAvatars = useCallback(() => {
     const app = appRef.current;
     if (!app) return;
+    const reactionManager = reactionManagerRef.current;
 
     // Preserve animation state from previous avatars for continuity
     const prevAvatars = new Map(avatarsRef.current);
 
-    // Tear down previous avatars
+    // Tear down previous avatars (kill all GSAP tweens on removed graphics)
     for (const av of avatarsRef.current.values()) {
+      if (reactionManager) reactionManager.killAll(av.graphic);
       app.stage.removeChild(av.container);
     }
     avatarsRef.current.clear();
@@ -308,7 +322,30 @@ export function PixiCanvas({
         targetScale: prev ? prev.targetScale : 1.0,
       });
     });
-  }, [hideTooltip, showTooltip]);
+
+    // ---- Idle breathing: start on inactive avatars, stop on active ----
+    if (reactionManager) {
+      for (const avatar of avatarsRef.current.values()) {
+        const activity = activitiesRef.current[avatar.sessionKey];
+        const isActive = !!(activity && shouldShowActivity(activity));
+        if (!isActive) {
+          reactionManager.startIdle(avatar.graphic);
+        } else {
+          reactionManager.stopIdle(avatar.graphic);
+        }
+      }
+    }
+
+    // ---- Expose reactionRef to parent ----
+    if (reactionRef && reactionManager) {
+      reactionRef.current = {
+        playReaction: (sessionKey: string, type: ReactionType) => {
+          const avatar = avatarsRef.current.get(sessionKey);
+          if (avatar) reactionManager.playReaction(avatar.graphic, type);
+        },
+      };
+    }
+  }, [hideTooltip, showTooltip, reactionRef]);
 
   // ---- Init PixiJS app ONCE on mount ----
 
@@ -318,6 +355,8 @@ export function PixiCanvas({
 
     let destroyed = false;
     const app = new Application();
+    const reactionManager = new ReactionManager();
+    reactionManagerRef.current = reactionManager;
 
     async function setup() {
       await app.init({
@@ -348,19 +387,19 @@ export function PixiCanvas({
         const activities = activitiesRef.current;
 
         for (const avatar of avatarsRef.current.values()) {
-          // Smooth hover (no breathing)
+          // Smooth hover scaling (container level — GSAP handles graphic-level reactions)
           avatar.currentScale +=
             (avatar.targetScale - avatar.currentScale) * 0.12 * ((dt * 60) / 60);
 
           avatar.container.scale.set(avatar.currentScale);
 
-          // Floating drift
+          // Floating drift (container level — independent of GSAP graphic reactions)
           avatar.driftAngle += avatar.driftSpeed * dt * 0.02;
           avatar.container.x = avatar.anchorX + Math.cos(avatar.driftAngle) * avatar.driftRadius;
           avatar.container.y =
             avatar.anchorY + Math.sin(avatar.driftAngle * 0.7 + avatar.phase) * avatar.driftRadius;
 
-          // Active: pulsing glow
+          // Active: pulsing glow on graphic
           if (avatar.isSelected) {
             avatar.graphic.alpha = 0.6 + Math.sin(time * 3 + avatar.phase) * 0.3;
           }
@@ -374,15 +413,21 @@ export function PixiCanvas({
             avatar.activityRing.alpha = pulse;
             const ringScale = 1.0 + Math.sin(time * 3) * 0.05;
             avatar.activityRing.scale.set(ringScale);
+
+            // Stop idle breathing while session is active
+            reactionManager.stopIdle(avatar.graphic);
           } else {
             avatar.activityRing.alpha = 0;
+
+            // Resume idle breathing when session is inactive (idempotent)
+            reactionManager.startIdle(avatar.graphic);
           }
 
           // ---- Tool icon + braille spinner (static, no bobbing) ----
           const hasTool = !!(activity?.toolName && isToolBadgeFresh(activity.toolTs));
           if (isRunning && hasTool) {
-            const icon = toolIcon(activity!.toolName);
-            if (avatar.badge.text !== icon) avatar.badge.text = icon;
+            const toolIconStr = toolIcon(activity!.toolName);
+            if (avatar.badge.text !== toolIconStr) avatar.badge.text = toolIconStr;
             avatar.badge.alpha = 1;
             avatar.badge.y = avatar.radius + 6;
 
@@ -406,6 +451,9 @@ export function PixiCanvas({
     return () => {
       destroyed = true;
       appRef.current = null;
+      reactionManagerRef.current = null;
+      reactionManager.destroy();
+      if (reactionRef) reactionRef.current = null;
       hideTooltip();
       try {
         app.destroy(true, { children: true });
@@ -413,7 +461,7 @@ export function PixiCanvas({
         // Ignore
       }
     };
-  }, [syncAvatars, hideTooltip]); // syncAvatars + hideTooltip are stable (useCallback with [] deps)
+  }, [syncAvatars, hideTooltip, reactionRef]); // stable deps
 
   // ---- Re-sync avatars when session data or selection changes ----
 

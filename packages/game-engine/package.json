@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@openlares/core": "workspace:*",
-    "pixi.js": "^8.17.1"
+    "pixi.js": "^8.17.1",
+    "gsap": "^3.12.7"
   },
   "peerDependencies": {
     "react": "^19.0.0"
