@@ -136,6 +136,14 @@ export interface GatewayActions {
   openChat: () => void;
   /** Hide the chat panel. */
   closeChat: () => void;
+
+  // ---- Agent file RPC ----
+  /** List all agents from the gateway. */
+  listAgents: () => Promise<{ agentId: string; name?: string }[]>;
+  /** Read an agent workspace file. */
+  getAgentFile: (agentId: string, name: string) => Promise<string>;
+  /** Write an agent workspace file. */
+  setAgentFile: (agentId: string, name: string, content: string) => Promise<void>;
 }
 
 export type GatewayStore = GatewayState & GatewayActions;
@@ -372,6 +380,33 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
 
   closeChat: () => {
     set({ showChat: false });
+  },
+
+  // ---- Agent file RPC ----
+  listAgents: async () => {
+    const client = get().client;
+    if (!client) throw new Error('Not connected to gateway');
+    const result = await client.request<{ agents?: { agentId: string; name?: string }[] }>(
+      'agents.list',
+      {},
+    );
+    return result.agents ?? [];
+  },
+
+  getAgentFile: async (agentId: string, name: string) => {
+    const client = get().client;
+    if (!client) throw new Error('Not connected to gateway');
+    const result = await client.request<{ file?: { content?: string } }>('agents.files.get', {
+      agentId,
+      name,
+    });
+    return result.file?.content ?? '';
+  },
+
+  setAgentFile: async (agentId: string, name: string, content: string) => {
+    const client = get().client;
+    if (!client) throw new Error('Not connected to gateway');
+    await client.request('agents.files.set', { agentId, name, content });
   },
 }));
 
