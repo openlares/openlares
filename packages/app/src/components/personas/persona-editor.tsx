@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PersonaFields } from '@openlares/core';
 import { parseIdentityFile, reassembleIdentityFile, type ParsedIdentity } from './field-detector';
+import { gatewayStore } from '@openlares/api-client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,9 +45,7 @@ export function PersonaEditor() {
     let cancelled = false;
     async function fetchAgents() {
       try {
-        const res = await fetch('/api/agents');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: AgentInfo[] = await res.json();
+        const data = await gatewayStore.getState().listAgents();
         if (!cancelled) {
           setAgents(data);
           setAgentsError('');
@@ -69,9 +68,7 @@ export function PersonaEditor() {
     setLoadingFile(true);
     setSaveStatus('idle');
     try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/files/IDENTITY.md`);
-      const data = (await res.json()) as { content: string };
-      const content = data.content ?? '';
+      const content = await gatewayStore.getState().getAgentFile(agentId, 'IDENTITY.md');
       originalContentRef.current = content;
       const p = parseIdentityFile(content);
       setParsed(p);
@@ -111,15 +108,7 @@ export function PersonaEditor() {
         ? reassembleIdentityFile(originalContentRef.current, parsed, fields, freeText)
         : buildFreshIdentity(fields, freeText);
 
-      const res = await fetch(
-        `/api/agents/${encodeURIComponent(selectedAgent)}/files/IDENTITY.md`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
-        },
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await gatewayStore.getState().setAgentFile(selectedAgent, 'IDENTITY.md', content);
       // Update original content so subsequent saves work correctly
       originalContentRef.current = content;
       setParsed(parseIdentityFile(content));
