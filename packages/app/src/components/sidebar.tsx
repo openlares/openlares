@@ -8,6 +8,7 @@ import { useGatewayStore } from '@openlares/api-client';
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/' },
   { label: 'Projects', href: '/projects' },
+  { label: 'Personas', href: '/personas' },
   { label: 'Settings', href: '/settings' },
 ];
 

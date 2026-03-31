@@ -48,3 +48,15 @@ export interface ActivityItem {
   detail?: string;
   timestamp: number;
 }
+
+/**
+ * Persona display fields for an OpenClaw agent.
+ */
+export interface PersonaFields {
+  name: string;
+  role: string;
+  vibe: string;
+  color: string;
+  icon: string;
+  shape: 'circle' | 'rounded-square' | 'hexagon';
+}
