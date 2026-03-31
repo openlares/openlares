@@ -4,7 +4,7 @@
  * All mutations return the affected row(s). IDs are generated via randomUUID().
  */
 
-import { eq, and, asc, desc, isNull, isNotNull, count, inArray } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, isNotNull, count, inArray, ne } from 'drizzle-orm';
 import type { OpenlareDb } from './client';
 import {
   projects,
@@ -884,7 +884,7 @@ export function getProjectStats(db: OpenlareDb, projectId: string): ProjectStats
  */
 export function listProjectsWithStats(
   db: OpenlareDb,
-): Array<typeof projects.$inferSelect & ProjectStats> {
+): Array<typeof projects.$inferSelect & ProjectStats & { activeAgents: string[] }> {
   const allProjects = listProjects(db);
   if (allProjects.length === 0) return [];
 
@@ -904,6 +904,21 @@ export function listProjectsWithStats(
     .groupBy(queues.projectId)
     .all();
 
+  // Batch query: all distinct actors per project from task_history
+  const agentRows = db
+    .selectDistinct({ projectId: tasks.projectId, actor: taskHistory.actor })
+    .from(taskHistory)
+    .innerJoin(tasks, eq(taskHistory.taskId, tasks.id))
+    .where(and(inArray(tasks.projectId, ids), ne(taskHistory.actor, 'human')))
+    .all();
+
+  const agentsByProject = new Map<string, string[]>();
+  for (const row of agentRows) {
+    const list = agentsByProject.get(row.projectId) ?? [];
+    if (!list.includes(row.actor)) list.push(row.actor);
+    agentsByProject.set(row.projectId, list);
+  }
+
   const taskMap = new Map(taskCounts.map((r) => [r.projectId, r.total]));
   const queueMap = new Map(queueCounts.map((r) => [r.projectId, r.total]));
 
@@ -911,5 +926,20 @@ export function listProjectsWithStats(
     ...p,
     totalTasks: taskMap.get(p.id) ?? 0,
     queueCount: queueMap.get(p.id) ?? 0,
+    activeAgents: agentsByProject.get(p.id) ?? [],
   }));
+}
+
+/**
+ * List distinct agent IDs that have acted on tasks in a project
+ * (from task_history, excluding 'human' actors).
+ */
+export function listProjectActiveAgents(db: OpenlareDb, projectId: string): string[] {
+  const rows = db
+    .selectDistinct({ actor: taskHistory.actor })
+    .from(taskHistory)
+    .innerJoin(tasks, eq(taskHistory.taskId, tasks.id))
+    .where(and(eq(tasks.projectId, projectId), ne(taskHistory.actor, 'human')))
+    .all();
+  return rows.map((r) => r.actor);
 }

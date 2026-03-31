@@ -9,8 +9,8 @@ export default function ProjectsPage() {
   const db = getDb();
   const rawProjects = listProjectsWithStats(db);
 
-  const projects: (Project & { totalTasks: number; queueCount: number })[] = rawProjects.map(
-    (p) => ({
+  const projects: (Project & { totalTasks: number; queueCount: number; activeAgents: string[] })[] =
+    rawProjects.map((p) => ({
       ...p,
       config: p.config ?? null,
       pinned: Boolean(p.pinned),
@@ -18,8 +18,8 @@ export default function ProjectsPage() {
       systemPrompt: p.systemPrompt ?? null,
       createdAt: p.createdAt.getTime(),
       updatedAt: p.updatedAt.getTime(),
-    }),
-  );
+      activeAgents: p.activeAgents ?? [],
+    }));
 
   return <ProjectsGrid initialProjects={projects} />;
 }
