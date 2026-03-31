@@ -105,7 +105,10 @@ export function parseIdentityFile(content: string): ParsedIdentity {
       if (sharedValues[field] !== undefined) continue;
       const m = currentLine.match(regex);
       if (m) {
-        sharedValues[field] = (m[1] ?? '').trim();
+        sharedValues[field] = (m[1] ?? '')
+          .replace(/^\*+\s*/, '')
+          .replace(/\s*\*+$/, '')
+          .trim();
         sharedFieldLines.push({ field, lineIndex: i, originalLine: currentLine });
         consumed.add(i);
         break;
