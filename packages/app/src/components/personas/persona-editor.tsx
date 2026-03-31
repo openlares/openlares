@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PersonaFields } from '@openlares/core';
 import { parseIdentityFile, reassembleIdentityFile, type ParsedIdentity } from './field-detector';
-import { gatewayStore } from '@openlares/api-client';
+import { gatewayStore, useGatewayStore } from '@openlares/api-client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,8 +40,15 @@ export function PersonaEditor() {
   // ---- Save state ----
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
 
-  // ---- Fetch agents on mount ----
+  // ---- Track connection status ----
+  const connectionStatus = useGatewayStore((s) => s.connectionStatus);
+
+  // ---- Fetch agents when connected ----
   useEffect(() => {
+    if (connectionStatus !== 'connected') {
+      setLoadingAgents(true);
+      return;
+    }
     let cancelled = false;
     async function fetchAgents() {
       try {
@@ -67,7 +74,7 @@ export function PersonaEditor() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [connectionStatus]);
 
   // ---- Load IDENTITY.md when agent changes ----
   const loadFile = useCallback(async (agentId: string) => {
@@ -138,7 +145,11 @@ export function PersonaEditor() {
   // ---- Render ----
 
   if (loadingAgents) {
-    return <div className="text-sm text-gray-400">Loading agents…</div>;
+    return (
+      <div className="text-sm text-gray-400">
+        {connectionStatus !== 'connected' ? 'Waiting for gateway connection…' : 'Loading agents…'}
+      </div>
+    );
   }
 
   if (agentsError) {
