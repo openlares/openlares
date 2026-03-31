@@ -212,10 +212,17 @@ export function SetupWizard({ onSkip }: SetupWizardProps) {
                   type="text"
                   value={customUrl}
                   onChange={(e) => setCustomUrl(e.target.value)}
-                  placeholder="ws://192.168.1.100:18789"
+                  placeholder="wss://your-machine-ip:18789"
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                   onKeyDown={(e) => e.key === 'Enter' && handleAnotherMachine()}
                 />
+                <p className="text-xs text-slate-500">
+                  Run{' '}
+                  <code className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-slate-300">
+                    openclaw status
+                  </code>{' '}
+                  on the gateway machine to find the address.
+                </p>
                 <button
                   onClick={handleAnotherMachine}
                   disabled={!customUrl.trim()}
@@ -310,11 +317,15 @@ export function SetupWizard({ onSkip }: SetupWizardProps) {
                 onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
               />
               <p className="text-xs text-slate-500">
-                Run{' '}
+                Find your token in the OpenClaw web UI, or run{' '}
                 <code className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-slate-300">
-                  openclaw token show
+                  openclaw dashboard --no-open
                 </code>{' '}
-                in your terminal and paste the token here.
+                to copy a URL with the token to your clipboard. The token is in the{' '}
+                <code className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-slate-300">
+                  #token=
+                </code>{' '}
+                part of the URL.
               </p>
             </div>
 
@@ -388,6 +399,19 @@ export function SetupWizard({ onSkip }: SetupWizardProps) {
               <h2 className="text-lg font-semibold text-slate-100">Connection failed</h2>
               <p className="mt-1 text-sm text-red-400 break-all">{connError}</p>
             </div>
+
+            {url.startsWith('wss://') && (
+              <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 p-3">
+                <p className="text-xs text-amber-300">
+                  <strong>Using a self-signed certificate?</strong> Your browser may silently reject
+                  the connection. Open the gateway URL with{' '}
+                  <code className="rounded bg-slate-800 px-1 py-0.5 font-mono text-amber-200">
+                    https://
+                  </code>{' '}
+                  in a new tab, accept the certificate warning, then try connecting again.
+                </p>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <button
