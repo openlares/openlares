@@ -4,10 +4,12 @@ import { useState, useCallback, useEffect } from 'react';
 import { useToastStore } from '@/lib/toast-store';
 import { useRouter } from 'next/navigation';
 import type { Project } from '@/components/tasks/types';
+import { getSessionColor } from '@openlares/game-engine';
 
 interface ProjectWithStats extends Project {
   totalTasks: number;
   queueCount: number;
+  activeAgents: string[];
 }
 
 interface ProjectsGridProps {
@@ -186,6 +188,28 @@ export function ProjectsGrid({ initialProjects }: ProjectsGridProps) {
 
               <div className="pr-8">
                 <h2 className="font-semibold text-slate-100">{project.name}</h2>
+                {/* Agent avatars */}
+                {project.activeAgents.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1">
+                    {project.activeAgents.slice(0, 5).map((agentId) => (
+                      <div
+                        key={agentId}
+                        className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                        style={{
+                          backgroundColor: `#${getSessionColor(agentId).toString(16).padStart(6, '0')}`,
+                        }}
+                        title={agentId}
+                      >
+                        {agentId.charAt(0).toUpperCase()}
+                      </div>
+                    ))}
+                    {project.activeAgents.length > 5 && (
+                      <span className="text-xs text-slate-500">
+                        +{project.activeAgents.length - 5}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <p className="mt-1 text-sm text-slate-500">
                   {project.totalTasks} task{project.totalTasks !== 1 ? 's' : ''} &#xB7;{' '}
                   {project.queueCount} queue{project.queueCount !== 1 ? 's' : ''}
