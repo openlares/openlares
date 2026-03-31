@@ -47,7 +47,14 @@ export function PersonaEditor() {
       try {
         const data = await gatewayStore.getState().listAgents();
         if (!cancelled) {
-          setAgents(data);
+          // Deduplicate by agentId (gateway may return duplicates)
+          const seen = new Set<string>();
+          const unique = data.filter((a) => {
+            if (seen.has(a.agentId)) return false;
+            seen.add(a.agentId);
+            return true;
+          });
+          setAgents(unique);
           setAgentsError('');
         }
       } catch (e) {
