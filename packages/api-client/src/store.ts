@@ -386,11 +386,11 @@ export const gatewayStore = createStore<GatewayStore>((set, get) => ({
   listAgents: async () => {
     const client = get().client;
     if (!client) throw new Error('Not connected to gateway');
-    const result = await client.request<{ agents?: { agentId: string; name?: string }[] }>(
+    const result = await client.request<{ agents?: { id: string; name?: string }[] }>(
       'agents.list',
       {},
     );
-    return result.agents ?? [];
+    return (result.agents ?? []).map((a) => ({ agentId: a.id, name: a.name }));
   },
 
   getAgentFile: async (agentId: string, name: string) => {
