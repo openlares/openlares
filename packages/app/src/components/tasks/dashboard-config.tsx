@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Dashboard, Queue, Transition } from './types';
+import { gatewayStore, useGatewayStore } from '@openlares/api-client';
+
 type SessionMode = 'per-task' | 'agent-pool' | 'any-free';
 import { useToastStore } from '@/lib/toast-store';
 
@@ -63,7 +65,9 @@ export function ProjectConfig({
   // Agent assignment
   const [assignedAgents, setAssignedAgents] = useState<string[]>([]);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
-  const [newAgentInput, setNewAgentInput] = useState('');
+  const [selectedAgentToAdd, setSelectedAgentToAdd] = useState('');
+  const [availableAgents, setAvailableAgents] = useState<{ agentId: string; name?: string }[]>([]);
+  const connectionStatus = useGatewayStore((s) => s.connectionStatus);
 
   // Project system prompt
   const [projectSystemPrompt, setProjectSystemPrompt] = useState(dashboard.systemPrompt ?? '');
@@ -86,7 +90,7 @@ export function ProjectConfig({
 
   const addToast = useToastStore((s) => s.addToast);
 
-  // Load agents and templates on mount
+  // Load assigned agents on mount
   useEffect(() => {
     fetch(`/api/projects/${projectId}/agents`)
       .then((r) => r.json())
@@ -96,6 +100,15 @@ export function ProjectConfig({
       })
       .catch(() => setAgentsLoaded(true));
 
+    // Load available agents from gateway
+    if (connectionStatus === 'connected') {
+      gatewayStore
+        .getState()
+        .listAgents()
+        .then(setAvailableAgents)
+        .catch(() => setAvailableAgents([]));
+    }
+
     fetch('/api/queue-templates')
       .then((r) => r.json())
       .then((tmpl: QueueTemplate[]) => {
@@ -104,7 +117,7 @@ export function ProjectConfig({
       .catch(() => {
         // silently ignore
       });
-  }, [projectId]);
+  }, [projectId, connectionStatus]);
 
   /** Refetch queues + transitions from API. */
   const refetch = useCallback(async () => {
@@ -145,7 +158,7 @@ export function ProjectConfig({
 
   // Agent assignment handlers
   const handleAddAgent = useCallback(async () => {
-    const agentId = newAgentInput.trim();
+    const agentId = selectedAgentToAdd;
     if (!agentId) return;
     try {
       const res = await fetch(`/api/projects/${projectId}/agents`, {
@@ -155,7 +168,7 @@ export function ProjectConfig({
       });
       if (res.ok) {
         setAssignedAgents((prev) => (prev.includes(agentId) ? prev : [...prev, agentId]));
-        setNewAgentInput('');
+        setSelectedAgentToAdd('');
       } else {
         const errData = (await res.json()) as { error?: string };
         addToast('error', errData.error ?? 'Failed to assign agent');
@@ -163,7 +176,7 @@ export function ProjectConfig({
     } catch {
       addToast('error', 'Network error — check your connection');
     }
-  }, [newAgentInput, projectId, addToast]);
+  }, [selectedAgentToAdd, projectId, addToast]);
 
   const handleRemoveAgent = useCallback(
     async (agentId: string) => {
@@ -592,18 +605,23 @@ export function ProjectConfig({
               </div>
             )}
             <div className="flex gap-2">
-              <input
-                value={newAgentInput}
-                onChange={(e) => setNewAgentInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleAddAgent();
-                }}
-                placeholder="Agent ID (e.g. main, ops)"
-                className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
-              />
+              <select
+                value={selectedAgentToAdd}
+                onChange={(e) => setSelectedAgentToAdd(e.target.value)}
+                className="flex-1 rounded-lg bg-slate-700/50 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-600 focus:ring-cyan-400"
+              >
+                <option value="">Select an agent…</option>
+                {availableAgents
+                  .filter((a) => !assignedAgents.includes(a.agentId))
+                  .map((a) => (
+                    <option key={a.agentId} value={a.agentId}>
+                      {a.name ?? a.agentId}
+                    </option>
+                  ))}
+              </select>
               <button
                 onClick={() => void handleAddAgent()}
-                disabled={!newAgentInput.trim()}
+                disabled={!selectedAgentToAdd}
                 className="rounded-lg bg-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-600 disabled:opacity-50"
               >
                 Add
