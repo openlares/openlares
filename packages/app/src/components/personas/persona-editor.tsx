@@ -39,6 +39,7 @@ export function PersonaEditor() {
 
   // ---- Save state ----
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [saveError, setSaveError] = useState('');
 
   // ---- Track connection status ----
   const connectionStatus = useGatewayStore((s) => s.connectionStatus);
@@ -127,8 +128,10 @@ export function PersonaEditor() {
       originalContentRef.current = content;
       setParsed(parseIdentityFile(content));
       setSaveStatus('saved');
-    } catch {
+    } catch (err) {
+      console.error('Persona save failed:', err);
       setSaveStatus('error');
+      setSaveError(err instanceof Error ? err.message : String(err));
     }
   }, [selectedAgent, parsed, fields, freeText]);
 
@@ -275,7 +278,9 @@ export function PersonaEditor() {
             </button>
             {saveStatus === 'saved' && <span className="text-sm text-green-400">✓ Saved</span>}
             {saveStatus === 'error' && (
-              <span className="text-sm text-red-400">Save failed — check connection</span>
+              <span className="text-sm text-red-400" title={saveError}>
+                Save failed: {saveError || 'check connection'}
+              </span>
             )}
           </div>
         </>
